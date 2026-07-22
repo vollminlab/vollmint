@@ -28,4 +28,12 @@ func TestUpCreatesTables(t *testing.T) {
 			t.Errorf("table %s missing (n=%d err=%v)", tbl, n, err)
 		}
 	}
+	var cats int
+	if err := conn.QueryRow(context.Background(), `SELECT count(*) FROM categories`).Scan(&cats); err != nil || cats < 10 {
+		t.Errorf("expected seeded categories, got %d (err=%v)", cats, err)
+	}
+	var venmoOwner string
+	if err := conn.QueryRow(context.Background(), `SELECT owner FROM accounts WHERE id='venmo'`).Scan(&venmoOwner); err != nil || venmoOwner != "scott" {
+		t.Errorf("venmo account not seeded (owner=%q err=%v)", venmoOwner, err)
+	}
 }
