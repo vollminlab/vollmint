@@ -69,6 +69,7 @@ func Parse(r io.Reader) ([]store.Txn, error) {
 			Source: "venmo_csv", ExternalID: id, AccountID: "venmo",
 			Posted: posted.UTC(), Amount: amount,
 			Description: get("Note"), Payee: payee, Raw: raw,
+			Pending: strings.EqualFold(get("Status"), "Pending"),
 		})
 	}
 	if header == nil {
