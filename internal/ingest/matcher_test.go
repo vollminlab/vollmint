@@ -25,24 +25,30 @@ func seedFull(t *testing.T, s *store.Store, source, extID, acct, posted, amount,
 		t.Fatal(err)
 	}
 	var id int64
-	s.Pool.QueryRow(context.Background(),
-		`SELECT id FROM transactions WHERE source=$1 AND external_id=$2`, source, extID).Scan(&id)
+	if err := s.Pool.QueryRow(context.Background(),
+		`SELECT id FROM transactions WHERE source=$1 AND external_id=$2`, source, extID).Scan(&id); err != nil {
+		t.Fatalf("seedFull lookup: %v", err)
+	}
 	return id
 }
 
 func categoryOf(t *testing.T, s *store.Store, id int64) string {
 	t.Helper()
 	var name string
-	s.Pool.QueryRow(context.Background(), `SELECT coalesce(c.name,'') FROM transactions t
-		LEFT JOIN categories c ON c.id=t.category_id WHERE t.id=$1`, id).Scan(&name)
+	if err := s.Pool.QueryRow(context.Background(), `SELECT coalesce(c.name,'') FROM transactions t
+		LEFT JOIN categories c ON c.id=t.category_id WHERE t.id=$1`, id).Scan(&name); err != nil {
+		t.Fatalf("categoryOf: %v", err)
+	}
 	return name
 }
 
 func peerOf(t *testing.T, s *store.Store, id int64) int64 {
 	t.Helper()
 	var peer *int64
-	s.Pool.QueryRow(context.Background(),
-		`SELECT transfer_peer_id FROM transactions WHERE id=$1`, id).Scan(&peer)
+	if err := s.Pool.QueryRow(context.Background(),
+		`SELECT transfer_peer_id FROM transactions WHERE id=$1`, id).Scan(&peer); err != nil {
+		t.Fatalf("peerOf: %v", err)
+	}
 	if peer == nil {
 		return 0
 	}
@@ -109,5 +115,10 @@ func TestMatchCardPaymentPairs(t *testing.T) {
 	}
 	if peerOf(t, s, spend) != 0 || categoryOf(t, s, spend) == "Transfer" {
 		t.Error("ordinary card spend must not be swept into a transfer pair")
+	}
+
+	// Idempotency: second run pairs nothing new.
+	if n2, _ := MatchTransfers(ctx, s); n2 != 0 {
+		t.Fatalf("second run paired %d, want 0", n2)
 	}
 }
