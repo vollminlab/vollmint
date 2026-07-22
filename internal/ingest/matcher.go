@@ -30,6 +30,15 @@ func MatchTransfers(ctx context.Context, s *store.Store) (int, error) {
 		return 0, err
 	}
 
+	// User-assigned categories are sticky: pairing may only replace NULL or
+	// the seed "Needs Venmo detail" placeholder with Transfer, never a
+	// category a user set by hand.
+	var needsVenmoCat int
+	if err := tx.QueryRow(ctx,
+		`SELECT id FROM categories WHERE name='Needs Venmo detail'`).Scan(&needsVenmoCat); err != nil {
+		return 0, err
+	}
+
 	pairs := 0
 
 	// (a) Venmo: bank debit ←→ venmo_csv row, equal amount, ±3 days.
@@ -69,8 +78,11 @@ func MatchTransfers(ctx context.Context, s *store.Store) (int, error) {
 	}
 	for _, p := range venmoPairs {
 		if _, err := tx.Exec(ctx, `UPDATE transactions
-			SET transfer_peer_id=$1, category_id=$2, updated_at=now() WHERE id=$3`,
-			p.b, transferCat, p.a); err != nil {
+			SET transfer_peer_id=$1,
+			    category_id = CASE WHEN category_id IS NULL OR category_id=$2 THEN $3 ELSE category_id END,
+			    updated_at=now()
+			WHERE id=$4`,
+			p.b, needsVenmoCat, transferCat, p.a); err != nil {
 			return 0, err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE transactions
@@ -122,8 +134,11 @@ func MatchTransfers(ctx context.Context, s *store.Store) (int, error) {
 	for _, p := range cardPairs {
 		for _, upd := range []struct{ id, peer int64 }{{p.a, p.b}, {p.b, p.a}} {
 			if _, err := tx.Exec(ctx, `UPDATE transactions
-				SET transfer_peer_id=$1, category_id=$2, updated_at=now() WHERE id=$3`,
-				upd.peer, transferCat, upd.id); err != nil {
+				SET transfer_peer_id=$1,
+				    category_id = CASE WHEN category_id IS NULL OR category_id=$2 THEN $3 ELSE category_id END,
+				    updated_at=now()
+				WHERE id=$4`,
+				upd.peer, needsVenmoCat, transferCat, upd.id); err != nil {
 				return 0, err
 			}
 		}
