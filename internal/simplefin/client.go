@@ -123,3 +123,7 @@ func (c *Client) Accounts(ctx context.Context, start time.Time, pending bool) (*
 	}
 	return &set, nil
 }
+
+// ForceHTTP downgrades the client to plain http. Test servers only —
+// production access URLs are always https.
+func ForceHTTP(c *Client) { c.scheme = "http" }

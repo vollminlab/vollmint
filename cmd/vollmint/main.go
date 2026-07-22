@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
+	"github.com/vollminlab/vollmint/internal/ingest"
+	"github.com/vollminlab/vollmint/internal/migrate"
 	"github.com/vollminlab/vollmint/internal/simplefin"
+	"github.com/vollminlab/vollmint/internal/store"
 )
 
 func main() {
@@ -47,6 +51,29 @@ func runClaim(args []string) error {
 	return nil
 }
 
+func runSync(args []string) error {
+	dbURL := os.Getenv("DATABASE_URL")
+	accessURL := os.Getenv("SIMPLEFIN_ACCESS_URL")
+	if dbURL == "" || accessURL == "" {
+		return fmt.Errorf("DATABASE_URL and SIMPLEFIN_ACCESS_URL are required")
+	}
+	ctx := context.Background()
+	if err := migrate.Up(dbURL); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	s, err := store.New(ctx, dbURL)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	res, err := ingest.Sync(ctx, s, simplefin.New(accessURL), "scott")
+	if err != nil {
+		return err
+	}
+	fmt.Printf("sync ok: upserted=%d categorized=%d paired=%d swept=%d\n",
+		res.Upserted, res.Categorized, res.Paired, res.Swept)
+	return nil
+}
+
 // Implemented in later tasks; stubs keep the build green.
-func runSync(args []string) error        { return fmt.Errorf("not implemented") }
 func runImportVenmo(args []string) error { return fmt.Errorf("not implemented") }
