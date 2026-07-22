@@ -1,0 +1,6 @@
+Account Statement - (@scott-v) - July 1st to July 20th 2026,,,,,,,,,,,,,,,,,,,,,
+,ID,Datetime,Type,Status,Note,From,To,Amount (total),Amount (tip),Amount (tax),Amount (fee),Tax Rate,Tax Exempt,Funding Source,Destination,Beginning Balance,Ending Balance,Statement Period Venmo Fees,Terminal Location,Year to Date Venmo Fees,Disclaimer
+,4111111111111111111,2026-07-15T18:22:03,Payment,Complete,Pizza night,Scott Vollmin,Luigi Mario,- $32.00,,,,,,Ally Bank Personal Checking x1234,,,,,Venmo,,
+,4222222222222222222,2026-07-12T09:10:44,Payment,Complete,,Scott Vollmin,Coffee Cart,- $7.45,,,,,,Venmo balance,,,,,Venmo,,
+,4333333333333333333,2026-07-10T20:05:00,Payment,Complete,Fantasy league,Dave Webb,Scott Vollmin,+ $25.00,,,,,,,Venmo balance,,,,Venmo,,
+,,,,,,,,,,,,,,,,$0.00,$18.45,$0.00,,$0.00,In case of errors or questions about your electronic transfers...
