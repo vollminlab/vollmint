@@ -22,15 +22,23 @@ type SyncResult struct {
 // defaultOwner is assigned to accounts on first sight only (spec: the UI owns
 // owner assignment afterwards).
 func Sync(ctx context.Context, s *store.Store, c *simplefin.Client, defaultOwner string) (*SyncResult, error) {
+	start, err := windowStart(ctx, s)
+	if err != nil {
+		return nil, fmt.Errorf("window start: %w", err)
+	}
+
 	var runID int64
-	start := windowStart(ctx, s)
 	if err := s.Pool.QueryRow(ctx, `INSERT INTO sync_runs (kind, window_start, window_end)
 		VALUES ('simplefin', $1, current_date) RETURNING id`, start).Scan(&runID); err != nil {
 		return nil, err
 	}
 	fail := func(err error) (*SyncResult, error) {
-		s.Pool.Exec(ctx, `UPDATE sync_runs SET status='failed', finished=now(), detail=$1 WHERE id=$2`,
+		recoveryCtx := context.WithoutCancel(ctx)
+		_, uerr := s.Pool.Exec(recoveryCtx, `UPDATE sync_runs SET status='failed', finished=now(), detail=$1 WHERE id=$2`,
 			err.Error(), runID)
+		if uerr != nil {
+			return nil, fmt.Errorf("%w (also failed to record failure: %v)", err, uerr)
+		}
 		return nil, err
 	}
 
@@ -84,18 +92,23 @@ func Sync(ctx context.Context, s *store.Store, c *simplefin.Client, defaultOwner
 	_, err = s.Pool.Exec(ctx, `UPDATE sync_runs
 		SET status=$1, finished=now(), rows_upserted=$2, detail=$3 WHERE id=$4`,
 		status, res.Upserted, detail, runID)
-	return res, err
+	if err != nil {
+		return fail(fmt.Errorf("record sync result: %w", err))
+	}
+	return res, nil
 }
 
 // windowStart returns (last successful sync − 7d), or −85d on first run.
-func windowStart(ctx context.Context, s *store.Store) time.Time {
+func windowStart(ctx context.Context, s *store.Store) (time.Time, error) {
 	var last *time.Time
-	s.Pool.QueryRow(ctx, `SELECT max(started) FROM sync_runs
-		WHERE kind='simplefin' AND status IN ('ok','partial')`).Scan(&last)
-	if last == nil {
-		return time.Now().UTC().AddDate(0, 0, -85)
+	if err := s.Pool.QueryRow(ctx, `SELECT max(started) FROM sync_runs
+		WHERE kind='simplefin' AND status IN ('ok','partial')`).Scan(&last); err != nil {
+		return time.Time{}, err
 	}
-	return last.UTC().AddDate(0, 0, -7)
+	if last == nil {
+		return time.Now().UTC().AddDate(0, 0, -85), nil
+	}
+	return last.UTC().AddDate(0, 0, -7), nil
 }
 
 // SweepStalePending deletes pending rows untouched for staleDays — their

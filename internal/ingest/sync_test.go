@@ -108,3 +108,21 @@ func TestSweepStalePending(t *testing.T) {
 		t.Fatalf("remaining pending=%d want 1", count)
 	}
 }
+
+func TestWindowStartOverlap(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	started := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	if _, err := s.Pool.Exec(ctx, `INSERT INTO sync_runs (kind, status, started)
+		VALUES ('simplefin','ok',$1), ('simplefin','failed',now())`, started); err != nil {
+		t.Fatal(err)
+	}
+	got, err := windowStart(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := started.AddDate(0, 0, -7)
+	if !got.Equal(want) {
+		t.Fatalf("windowStart=%v want %v", got, want)
+	}
+}
