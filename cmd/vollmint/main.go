@@ -75,5 +75,34 @@ func runSync(args []string) error {
 	return nil
 }
 
-// Implemented in later tasks; stubs keep the build green.
-func runImportVenmo(args []string) error { return fmt.Errorf("not implemented") }
+func runImportVenmo(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: vollmint import-venmo <statement.csv>")
+	}
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		return fmt.Errorf("DATABASE_URL is required")
+	}
+	ctx := context.Background()
+	if err := migrate.Up(dbURL); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	s, err := store.New(ctx, dbURL)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	f, err := os.Open(args[0])
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	res, err := ingest.ImportVenmo(ctx, s, f)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("import ok: upserted=%d categorized=%d paired=%d\n",
+		res.Upserted, res.Categorized, res.Paired)
+	fmt.Fprintln(os.Stderr, "Reminder: delete the CSV export when done — it is not retained by vollmint.")
+	return nil
+}
