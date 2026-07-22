@@ -1,0 +1,4 @@
+/vollmint
+*.csv
+!internal/venmo/testdata/*.csv
+.env
