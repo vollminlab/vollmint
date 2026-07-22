@@ -25,4 +25,9 @@ INSERT INTO category_rules (priority, match_type, pattern, category_id)
     SELECT 1000, 'substring', 'VENMO', id FROM categories WHERE name = 'Needs Venmo detail';
 
 -- +goose Down
-DELETE FROM category_rules; DELETE FROM accounts WHERE id='venmo'; DELETE FROM categories;
+DELETE FROM category_rules WHERE priority = 1000 AND pattern = 'VENMO';
+DELETE FROM accounts WHERE id = 'venmo';
+DELETE FROM categories WHERE name IN (
+    'Housing', 'Groceries', 'Dining', 'Transport', 'Utilities',
+    'Subscriptions', 'Entertainment', 'Shopping', 'Health', 'Travel',
+    'Vices', 'Paycheck', 'Savings', 'Transfer', 'Needs Venmo detail');

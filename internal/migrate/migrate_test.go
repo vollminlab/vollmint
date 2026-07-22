@@ -36,4 +36,10 @@ func TestUpCreatesTables(t *testing.T) {
 	if err := conn.QueryRow(context.Background(), `SELECT owner FROM accounts WHERE id='venmo'`).Scan(&venmoOwner); err != nil || venmoOwner != "scott" {
 		t.Errorf("venmo account not seeded (owner=%q err=%v)", venmoOwner, err)
 	}
+	var ruleCat string
+	if err := conn.QueryRow(context.Background(),
+		`SELECT c.name FROM category_rules r JOIN categories c ON c.id = r.category_id
+		 WHERE r.priority = 1000 AND r.pattern = 'VENMO'`).Scan(&ruleCat); err != nil || ruleCat != "Needs Venmo detail" {
+		t.Errorf("VENMO fallback rule not seeded (category=%q err=%v)", ruleCat, err)
+	}
 }
