@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/vollminlab/vollmint/internal/migrate"
 )
 
@@ -18,6 +19,21 @@ func testDB(t *testing.T) *Store {
 	if url == "" {
 		t.Fatal("TEST_DATABASE_URL not set (see README dev section)")
 	}
+	// Serialize DB-backed tests across packages: `go test ./...` runs package
+	// binaries concurrently, and every testDB truncates the same shared
+	// database. A session advisory lock held for the test's duration keeps
+	// them from interleaving.
+	lockConn, err := pgx.Connect(context.Background(), url)
+	if err != nil {
+		t.Fatalf("lock conn: %v", err)
+	}
+	if _, err := lockConn.Exec(context.Background(), `SELECT pg_advisory_lock(788401)`); err != nil {
+		t.Fatalf("advisory lock: %v", err)
+	}
+	t.Cleanup(func() {
+		lockConn.Exec(context.Background(), `SELECT pg_advisory_unlock(788401)`)
+		lockConn.Close(context.Background())
+	})
 	if err := migrate.Up(url); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
