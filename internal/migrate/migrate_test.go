@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/vollminlab/vollmint/internal/testutil"
 )
 
 func TestUpCreatesTables(t *testing.T) {
@@ -13,6 +14,7 @@ func TestUpCreatesTables(t *testing.T) {
 	if url == "" {
 		t.Fatal("TEST_DATABASE_URL not set (see README dev section)")
 	}
+	testutil.SerializeDB(t, url)
 	if err := Up(url); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
