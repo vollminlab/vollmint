@@ -51,3 +51,65 @@ func TestUpsertRejectsBadAmount(t *testing.T) {
 		t.Fatal("expected error for malformed amount")
 	}
 }
+
+func TestUpsertAccountsPreservesOwnerAndBalance(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+
+	// First upsert: insert with balance and owner
+	err := s.UpsertAccounts(ctx, []Account{{
+		ID:          "act-1",
+		Name:        "Ally Checking",
+		Org:         "Ally Bank",
+		Owner:       "scott",
+		Balance:     "1000.00",
+		BalanceDate: day("2026-07-20"),
+		Currency:    "", // should default to USD
+	}})
+	if err != nil {
+		t.Fatalf("first UpsertAccounts: %v", err)
+	}
+
+	// Verify initial state
+	var owner, balance, name, currency string
+	err = s.Pool.QueryRow(ctx, `SELECT owner, balance::text, name, currency FROM accounts WHERE id='act-1'`).Scan(&owner, &balance, &name, &currency)
+	if err != nil {
+		t.Fatalf("first query: %v", err)
+	}
+	if owner != "scott" || balance != "1000.00" || name != "Ally Checking" || currency != "USD" {
+		t.Fatalf("initial state wrong: owner=%q balance=%q name=%q currency=%q", owner, balance, name, currency)
+	}
+
+	// Second upsert: update with different owner (should not change) and empty balance (should preserve)
+	err = s.UpsertAccounts(ctx, []Account{{
+		ID:          "act-1",
+		Name:        "Ally Checking Renamed",
+		Org:         "Ally Bank",
+		Owner:       "nikki", // different owner, but should not update
+		Balance:     "",      // empty = unknown, should preserve stored value
+		BalanceDate: time.Time{},
+		Currency:    "",
+	}})
+	if err != nil {
+		t.Fatalf("second UpsertAccounts: %v", err)
+	}
+
+	// Verify after update: owner and balance preserved, name updated
+	var balanceDate time.Time
+	err = s.Pool.QueryRow(ctx, `SELECT owner, balance::text, name, balance_date FROM accounts WHERE id='act-1'`).Scan(&owner, &balance, &name, &balanceDate)
+	if err != nil {
+		t.Fatalf("second query: %v", err)
+	}
+	if owner != "scott" {
+		t.Fatalf("owner should be preserved as 'scott', got %q", owner)
+	}
+	if balance != "1000.00" {
+		t.Fatalf("balance should be preserved as '1000.00', got %q", balance)
+	}
+	if name != "Ally Checking Renamed" {
+		t.Fatalf("name should be updated to 'Ally Checking Renamed', got %q", name)
+	}
+	if !balanceDate.Equal(day("2026-07-20")) {
+		t.Fatalf("balance_date should be preserved as 2026-07-20, got %v", balanceDate)
+	}
+}

@@ -49,10 +49,18 @@ type Txn struct {
 
 // UpsertAccounts inserts or updates by id. owner is set only on insert —
 // the user may reassign owners in the UI and syncs must not clobber that.
+// Validates all accounts before executing any SQL (fail-atomic).
 func (s *Store) UpsertAccounts(ctx context.Context, accts []Account) error {
-	for _, a := range accts {
-		if a.Currency == "" {
-			a.Currency = "USD"
+	// Pre-pass: validate all accounts and normalize values
+	type normAcct struct {
+		id, name, org, currency, owner string
+		balance, balanceDate            any
+	}
+	normalized := make([]normAcct, len(accts))
+	for i, a := range accts {
+		currency := a.Currency
+		if currency == "" {
+			currency = "USD"
 		}
 		var bal any
 		if a.Balance != "" {
@@ -61,16 +69,40 @@ func (s *Store) UpsertAccounts(ctx context.Context, accts []Account) error {
 			}
 			bal = a.Balance
 		}
-		_, err := s.Pool.Exec(ctx, `
+		normalized[i] = normAcct{
+			id:          a.ID,
+			name:        a.Name,
+			org:         a.Org,
+			currency:    currency,
+			owner:       a.Owner,
+			balance:     bal,
+			balanceDate: nullTime(a.BalanceDate),
+		}
+	}
+
+	// Execute all upserts in a transaction
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	for _, n := range normalized {
+		_, err := tx.Exec(ctx, `
 			INSERT INTO accounts (id, name, org, currency, owner, balance, balance_date)
 			VALUES ($1,$2,$3,$4,$5,$6,$7)
 			ON CONFLICT (id) DO UPDATE SET
 			  name=EXCLUDED.name, org=EXCLUDED.org, currency=EXCLUDED.currency,
-			  balance=EXCLUDED.balance, balance_date=EXCLUDED.balance_date`,
-			a.ID, a.Name, a.Org, a.Currency, a.Owner, bal, nullTime(a.BalanceDate))
+			  balance=COALESCE(EXCLUDED.balance, accounts.balance),
+			  balance_date=COALESCE(EXCLUDED.balance_date, accounts.balance_date)`,
+			n.id, n.name, n.org, n.currency, n.owner, n.balance, n.balanceDate)
 		if err != nil {
-			return fmt.Errorf("upsert account %s: %w", a.ID, err)
+			return fmt.Errorf("upsert account %s: %w", n.id, err)
 		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
 	}
 	return nil
 }
