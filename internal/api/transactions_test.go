@@ -1,9 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -72,3 +75,43 @@ func TestGetTransactionsSemanticallyInvalidMonth(t *testing.T) {
 		t.Fatalf("semantically invalid month status = %d, want 400", rec.Code)
 	}
 }
+
+func TestPatchTransactionSetsCategory(t *testing.T) {
+	s := testStore(t)
+	id := seedTxn(t, s, "joint1", "joint", "j1", "2026-07-10", "-40.00", "Dinner")
+	var diningID int
+	_ = s.Pool.QueryRow(nil0(), `SELECT id FROM categories WHERE name='Dining'`).Scan(&diningID)
+	srv := New(s)
+
+	body := strings.NewReader(`{"category_id": ` + itoa(diningID) + `}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/transactions/"+itoa64(id), body)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPatchTransactionNotFound(t *testing.T) {
+	srv := New(testStore(t))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/transactions/999999", strings.NewReader(`{"category_id":1}`))
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d, want 404", rec.Code)
+	}
+}
+
+func TestPatchTransactionBadID(t *testing.T) {
+	srv := New(testStore(t))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/transactions/abc", strings.NewReader(`{}`))
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400", rec.Code)
+	}
+}
+
+func itoa(i int) string    { return strconv.Itoa(i) }
+func itoa64(i int64) string { return strconv.FormatInt(i, 10) }
+func nil0() context.Context { return context.Background() }
