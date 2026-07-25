@@ -2,3 +2,4 @@
 *.csv
 !internal/venmo/testdata/*.csv
 .env
+.worktrees/
