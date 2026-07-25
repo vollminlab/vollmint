@@ -1,0 +1,47 @@
+name: Build and Publish
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    name: Build Image
+    runs-on: vollminlab
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/login-action@v4
+        with:
+          registry: harbor.vollminlab.com
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+      - name: Compute semver
+        run: |
+          REF="${{ github.ref_name }}"
+          echo "SEMVER=${REF#v}" >> "$GITHUB_ENV"
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            harbor.vollminlab.com/vollminlab/vollmint:${{ github.ref_name }}
+            harbor.vollminlab.com/vollminlab/vollmint:${{ env.SEMVER }}
+
+  publish-chart:
+    name: Publish Helm Chart
+    runs-on: vollminlab
+    needs: build
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v5
+      - name: Compute semver
+        run: |
+          REF="${{ github.ref_name }}"
+          echo "SEMVER=${REF#v}" >> "$GITHUB_ENV"
+      - name: Login to Harbor OCI
+        run: |
+          echo "${{ secrets.HARBOR_PASSWORD }}" | helm registry login harbor.vollminlab.com \
+            --username "${{ secrets.HARBOR_USERNAME }}" --password-stdin
+      - name: Package and push chart
+        run: |
+          helm package charts/vollmint --version "${SEMVER}" --app-version "${SEMVER}"
+          helm push "vollmint-${SEMVER}.tgz" oci://harbor.vollminlab.com/vollminlab/charts
