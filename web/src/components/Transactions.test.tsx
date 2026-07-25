@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Transactions } from './Transactions'
 
@@ -51,5 +51,25 @@ describe('Transactions drill-down plumbing', () => {
       </MemoryRouter>,
     )
     await waitFor(() => expect(screen.getByText(/Filtered by category/i)).toBeInTheDocument())
+  })
+
+  it('surfaces an error when recategorize PATCH fails', async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: 'boom' }) })
+      }
+      const body = url.startsWith('/api/categories') ? cats : txns
+      return Promise.resolve({ ok: true, json: async () => body })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <MemoryRouter initialEntries={['/transactions?view=scott&month=2026-07']}>
+        <Transactions view="scott" month="2026-07" />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('WHOLE FOODS')).toBeInTheDocument())
+    const select = screen.getByLabelText('category for WHOLE FOODS')
+    fireEvent.change(select, { target: { value: '2' } })
+    await waitFor(() => expect(screen.getByText(/Error:/)).toBeInTheDocument())
   })
 })

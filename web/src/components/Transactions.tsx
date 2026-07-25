@@ -32,8 +32,13 @@ export function Transactions({ view, month }: { view: View; month: string }) {
   }, [])
 
   const recategorize = async (id: number, catId: number) => {
-    await patchTransaction(id, { category_id: catId })
-    load()
+    try {
+      await patchTransaction(id, { category_id: catId })
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      load()
+    }
   }
 
   const activeCat = cats.find((c) => c.id === categoryId)
