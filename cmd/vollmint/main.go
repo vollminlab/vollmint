@@ -23,6 +23,8 @@ func main() {
 		err = runSync(os.Args[2:])
 	case "import-venmo":
 		err = runImportVenmo(os.Args[2:])
+	case "serve":
+		err = runServe(os.Args[2:])
 	default:
 		usage()
 	}
@@ -33,7 +35,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: vollmint <claim|sync|import-venmo> [args]")
+	fmt.Fprintln(os.Stderr, "usage: vollmint <claim|sync|import-venmo|serve> [args]")
 	os.Exit(2)
 }
 
