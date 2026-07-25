@@ -31,12 +31,12 @@ func TestParseGoldenFile(t *testing.T) {
 	if out.Pending {
 		t.Errorf("want Pending=false (Status=Complete), got true")
 	}
-	if fs := FundingSource(out.Raw); fs != "Ally Bank Personal Checking x1234" {
+	if fs := FundingSource(out.Raw); fs != "Example Bank Personal Checking x1234" {
 		t.Errorf("funding source: %q", fs)
 	}
 
 	in := txns[2]
-	if in.Amount != "25.00" || in.Payee != "Dave Webb" {
+	if in.Amount != "25.00" || in.Payee != "Pat Peer" {
 		t.Errorf("incoming parsed wrong: %+v", in)
 	}
 }
@@ -52,7 +52,7 @@ func TestParseRejectsMissingColumns(t *testing.T) {
 
 func TestParsePendingStatus(t *testing.T) {
 	csv := `,ID,Datetime,Type,Status,Note,From,To,Amount (total),Amount (tip),Amount (tax),Amount (fee),Tax Rate,Tax Exempt,Funding Source,Destination,Beginning Balance,Ending Balance,Statement Period Venmo Fees,Terminal Location,Year to Date Venmo Fees,Disclaimer
-,5555555555555555555,2026-07-14T10:00:00,Payment,Pending,Test pending,Scott Vollmin,Test User,- $10.00,,,,,,Venmo balance,,,,,Venmo,,`
+,5555555555555555555,2026-07-14T10:00:00,Payment,Pending,Test pending,Sam Sample,Test User,- $10.00,,,,,,Venmo balance,,,,,Venmo,,`
 
 	txns, err := Parse(strings.NewReader(csv))
 	if err != nil {
@@ -68,7 +68,7 @@ func TestParsePendingStatus(t *testing.T) {
 
 func TestParseMalformedAmount(t *testing.T) {
 	csv := `,ID,Datetime,Type,Status,Note,From,To,Amount (total),Amount (tip),Amount (tax),Amount (fee),Tax Rate,Tax Exempt,Funding Source,Destination,Beginning Balance,Ending Balance,Statement Period Venmo Fees,Terminal Location,Year to Date Venmo Fees,Disclaimer
-,9999999999999999999,2026-07-14T10:00:00,Payment,Complete,Bad amount,Scott Vollmin,Test,$1.2.3,,,,,,Venmo balance,,,,,Venmo,,`
+,9999999999999999999,2026-07-14T10:00:00,Payment,Complete,Bad amount,Sam Sample,Test,$1.2.3,,,,,,Venmo balance,,,,,Venmo,,`
 
 	_, err := Parse(strings.NewReader(csv))
 	if err == nil {
@@ -81,7 +81,7 @@ func TestParseMalformedAmount(t *testing.T) {
 
 func TestParseMalformedDatetime(t *testing.T) {
 	csv := `,ID,Datetime,Type,Status,Note,From,To,Amount (total),Amount (tip),Amount (tax),Amount (fee),Tax Rate,Tax Exempt,Funding Source,Destination,Beginning Balance,Ending Balance,Statement Period Venmo Fees,Terminal Location,Year to Date Venmo Fees,Disclaimer
-,8888888888888888888,07/15/2026,Payment,Complete,Bad date,Scott Vollmin,Test,- $5.00,,,,,,Venmo balance,,,,,Venmo,,`
+,8888888888888888888,07/15/2026,Payment,Complete,Bad date,Sam Sample,Test,- $5.00,,,,,,Venmo balance,,,,,Venmo,,`
 
 	_, err := Parse(strings.NewReader(csv))
 	if err == nil {
