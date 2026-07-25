@@ -58,3 +58,13 @@ func TestCreateCategoryBadKind(t *testing.T) {
 		t.Fatalf("status=%d, want 400", rec.Code)
 	}
 }
+
+func TestPatchCategoryEmptyName(t *testing.T) {
+	srv := New(testStore(t))
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPatch, "/api/categories/1",
+		strings.NewReader(`{"name":""}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400", rec.Code)
+	}
+}

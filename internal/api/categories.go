@@ -88,6 +88,10 @@ func (s *Server) handlePatchCategory(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
+	if body.Name != nil && *body.Name == "" {
+		writeErr(w, http.StatusBadRequest, "name must not be empty")
+		return
+	}
 	if body.Kind != nil && !validKind(*body.Kind) {
 		writeErr(w, http.StatusBadRequest, "kind must be spend|income|transfer|savings")
 		return
