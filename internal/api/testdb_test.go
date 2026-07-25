@@ -29,6 +29,10 @@ func testStore(t *testing.T) *store.Store {
 		`TRUNCATE transactions, sync_runs, budgets RESTART IDENTITY CASCADE`,
 		`DELETE FROM accounts WHERE id <> 'venmo'`,
 		`DELETE FROM category_rules WHERE priority <> 1000`,
+		`DELETE FROM categories WHERE name NOT IN (
+			'Housing','Groceries','Dining','Transport','Utilities',
+			'Subscriptions','Entertainment','Shopping','Health','Travel',
+			'Vices','Paycheck','Savings','Transfer','Needs Venmo detail')`, // keep seed categories only
 	} {
 		if _, err := s.Pool.Exec(context.Background(), q); err != nil {
 			t.Fatalf("reset (%s): %v", q, err)

@@ -164,3 +164,37 @@ func TestUpdateTransactionNotFound(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
 }
+
+func TestCategoryCRUD(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	// list includes seeds
+	cats, err := s.ListCategories(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cats) == 0 {
+		t.Fatal("expected seed categories")
+	}
+	// create
+	id, err := s.CreateCategory(ctx, "Pets", "spend", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// update
+	if err := s.UpdateCategory(ctx, id, CategoryPatch{IsVice: boolp(true)}); err != nil {
+		t.Fatal(err)
+	}
+	cats, _ = s.ListCategories(ctx)
+	var found bool
+	for _, c := range cats {
+		if c.ID == id && c.Name == "Pets" && c.IsVice {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("updated Pets category not found or is_vice not set")
+	}
+}
+
+func boolp(b bool) *bool { return &b }

@@ -144,3 +144,77 @@ func (s *Store) UpdateTransaction(ctx context.Context, id int64, p TxnPatch) err
 	}
 	return nil
 }
+
+// Category is a spending category.
+type Category struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	ParentID *int   `json:"parent_id"`
+	Kind     string `json:"kind"`
+	IsVice   bool   `json:"is_vice"`
+}
+
+func (s *Store) ListCategories(ctx context.Context) ([]Category, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT id, name, parent_id, kind, is_vice FROM categories ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Category, 0)
+	for rows.Next() {
+		var c Category
+		if err := rows.Scan(&c.ID, &c.Name, &c.ParentID, &c.Kind, &c.IsVice); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// CreateCategory inserts a category and returns its id. kind must be one of
+// spend|income|transfer|savings (enforced by the DB CHECK).
+func (s *Store) CreateCategory(ctx context.Context, name, kind string, isVice bool) (int, error) {
+	var id int
+	err := s.Pool.QueryRow(ctx,
+		`INSERT INTO categories (name, kind, is_vice) VALUES ($1,$2,$3) RETURNING id`,
+		name, kind, isVice).Scan(&id)
+	return id, err
+}
+
+// CategoryPatch is a partial category update; nil fields are unchanged.
+type CategoryPatch struct {
+	Name   *string
+	Kind   *string
+	IsVice *bool
+}
+
+func (s *Store) UpdateCategory(ctx context.Context, id int, p CategoryPatch) error {
+	sets := []string{}
+	args := []any{}
+	if p.Name != nil {
+		args = append(args, *p.Name)
+		sets = append(sets, fmt.Sprintf("name=$%d", len(args)))
+	}
+	if p.Kind != nil {
+		args = append(args, *p.Kind)
+		sets = append(sets, fmt.Sprintf("kind=$%d", len(args)))
+	}
+	if p.IsVice != nil {
+		args = append(args, *p.IsVice)
+		sets = append(sets, fmt.Sprintf("is_vice=$%d", len(args)))
+	}
+	if len(sets) == 0 {
+		return nil
+	}
+	args = append(args, id)
+	tag, err := s.Pool.Exec(ctx,
+		fmt.Sprintf("UPDATE categories SET %s WHERE id=$%d", strings.Join(sets, ", "), len(args)), args...)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
