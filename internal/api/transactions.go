@@ -1,9 +1,11 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/vollminlab/vollmint/internal/store"
 )
@@ -35,9 +37,15 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	month := q.Get("month")
-	if month != "" && !monthRe.MatchString(month) {
-		writeErr(w, http.StatusBadRequest, "month must be YYYY-MM")
-		return
+	if month != "" {
+		if !monthRe.MatchString(month) {
+			writeErr(w, http.StatusBadRequest, "month must be YYYY-MM")
+			return
+		}
+		if _, err := time.Parse("2006-01", month); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid month")
+			return
+		}
 	}
 	f := store.TxnFilter{
 		View:          view,
@@ -56,7 +64,8 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	}
 	rows, err := s.store.ListTransactions(r.Context(), f)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		log.Printf("list transactions: %v", err)
+		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if rows == nil {

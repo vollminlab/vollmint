@@ -42,3 +42,33 @@ func TestGetTransactionsRejectsBadMonth(t *testing.T) {
 		t.Fatalf("bad month status = %d, want 400", rec.Code)
 	}
 }
+
+func TestGetTransactionsRejectsBadView(t *testing.T) {
+	srv := New(testStore(t))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/transactions?view=admin", nil)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad view status = %d, want 400", rec.Code)
+	}
+}
+
+func TestGetTransactionsRejectsBadCategory(t *testing.T) {
+	srv := New(testStore(t))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/transactions?category=abc", nil)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad category status = %d, want 400", rec.Code)
+	}
+}
+
+func TestGetTransactionsSemanticallyInvalidMonth(t *testing.T) {
+	srv := New(testStore(t))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/transactions?month=2026-13", nil)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("semantically invalid month status = %d, want 400", rec.Code)
+	}
+}
