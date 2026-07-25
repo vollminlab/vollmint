@@ -248,3 +248,57 @@ func TestCreateRuleBadCategory(t *testing.T) {
 		t.Fatalf("want FK error code 23503, got %s", pgErr.Code)
 	}
 }
+
+func TestBudgetGetPut(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+
+	var groceriesID int
+	err := s.Pool.QueryRow(ctx, `SELECT id FROM categories WHERE name = 'Groceries'`).Scan(&groceriesID)
+	if err != nil {
+		t.Fatalf("get groceries id: %v", err)
+	}
+
+	if err := s.PutBudgets(ctx, "2026-07", []BudgetItem{{CategoryID: groceriesID, Amount: "120.00"}}); err != nil {
+		t.Fatalf("put budgets: %v", err)
+	}
+	items, err := s.GetBudgets(ctx, "2026-07")
+	if err != nil {
+		t.Fatalf("get budgets: %v", err)
+	}
+	if len(items) != 1 || items[0].Amount != "120.00" {
+		t.Fatalf("unexpected budgets: %+v", items)
+	}
+
+	// whole-month replace: nil clears the month
+	if err := s.PutBudgets(ctx, "2026-07", nil); err != nil {
+		t.Fatalf("clear budgets: %v", err)
+	}
+	items, err = s.GetBudgets(ctx, "2026-07")
+	if err != nil {
+		t.Fatalf("get budgets after clear: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected 0 budgets after clear, got %d", len(items))
+	}
+}
+
+func TestPutBudgetsBadAmount(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+
+	var groceriesID int
+	err := s.Pool.QueryRow(ctx, `SELECT id FROM categories WHERE name = 'Groceries'`).Scan(&groceriesID)
+	if err != nil {
+		t.Fatalf("get groceries id: %v", err)
+	}
+
+	// bad amount should return ErrInvalidAmount
+	err = s.PutBudgets(ctx, "2026-07", []BudgetItem{{CategoryID: groceriesID, Amount: "12.3.4"}})
+	if err == nil {
+		t.Fatal("want error for invalid amount")
+	}
+	if !errors.Is(err, ErrInvalidAmount) {
+		t.Fatalf("want ErrInvalidAmount, got %v", err)
+	}
+}

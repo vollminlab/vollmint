@@ -106,6 +106,9 @@ func (s *Store) ListTransactions(ctx context.Context, f TxnFilter) ([]TxnRow, er
 // ErrNotFound is returned when an update targets a row that does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ErrInvalidAmount is returned when a budget amount fails validation.
+var ErrInvalidAmount = errors.New("invalid amount")
+
 // TxnPatch is a partial update to a transaction. A nil field is left unchanged.
 // For OwnerOverride, a non-nil pointer to "" clears the override to NULL;
 // any other value sets it (validated by the DB CHECK constraint).
@@ -264,4 +267,68 @@ func (s *Store) DeleteRule(ctx context.Context, id int) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// BudgetItem is a budget for a category in a month. Amount is a decimal string.
+type BudgetItem struct {
+	CategoryID   int    `json:"category_id"`
+	CategoryName string `json:"category_name"`
+	Amount       string `json:"amount"`
+}
+
+// GetBudgets returns all budgets for a given month, ordered by category name.
+func (s *Store) GetBudgets(ctx context.Context, month string) ([]BudgetItem, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT b.category_id, c.name, b.amount::text FROM budgets b
+		 JOIN categories c ON c.id = b.category_id
+		 WHERE b.month = $1::date
+		 ORDER BY c.name`,
+		month+"-01")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]BudgetItem, 0)
+	for rows.Next() {
+		var item BudgetItem
+		if err := rows.Scan(&item.CategoryID, &item.CategoryName, &item.Amount); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+// PutBudgets replaces all budgets for a month. items=nil clears the month.
+// Returns ErrInvalidAmount if any amount fails validation.
+func (s *Store) PutBudgets(ctx context.Context, month string, items []BudgetItem) error {
+	// Validate all amounts first
+	for _, it := range items {
+		if !amountRe.MatchString(it.Amount) {
+			return fmt.Errorf("budget for category %d: bad amount %q: %w", it.CategoryID, it.Amount, ErrInvalidAmount)
+		}
+	}
+
+	// Transaction: delete old budgets, then insert new ones
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, `DELETE FROM budgets WHERE month = $1::date`, month+"-01")
+	if err != nil {
+		return err
+	}
+
+	for _, it := range items {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO budgets (category_id, month, amount) VALUES ($1, $2::date, $3)`,
+			it.CategoryID, month+"-01", it.Amount)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
 }
