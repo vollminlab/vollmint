@@ -35,16 +35,16 @@ type Account struct {
 }
 
 type Txn struct {
-	ID              int64
-	Source          string // simplefin | venmo_csv
-	ExternalID      string
-	AccountID       string
-	Posted          time.Time
-	Amount          string // decimal string, negative = outflow
-	Description     string
-	Payee           string
-	Pending         bool
-	Raw             []byte // json
+	ID          int64
+	Source      string // simplefin | venmo_csv
+	ExternalID  string
+	AccountID   string
+	Posted      time.Time
+	Amount      string // decimal string, negative = outflow
+	Description string
+	Payee       string
+	Pending     bool
+	Raw         []byte // json
 }
 
 // UpsertAccounts inserts or updates by id. owner is set only on insert —
@@ -54,7 +54,7 @@ func (s *Store) UpsertAccounts(ctx context.Context, accts []Account) error {
 	// Pre-pass: validate all accounts and normalize values
 	type normAcct struct {
 		id, name, org, currency, owner string
-		balance, balanceDate            any
+		balance, balanceDate           any
 	}
 	normalized := make([]normAcct, len(accts))
 	for i, a := range accts {
