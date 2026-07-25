@@ -94,11 +94,10 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 }
 
 // --- temporary stubs (each replaced by its own task) ---
-func (s *Server) registerSummary()      {}
-func (s *Server) registerCategories()   {}
-func (s *Server) registerRules()        {}
-func (s *Server) registerBudgets()      {}
-func (s *Server) registerRecurring()    {}
-func (s *Server) registerImports()      {}
-func (s *Server) registerSync()         {}
-func (s *Server) registerStatic()       {}
+func (s *Server) registerCategories() {}
+func (s *Server) registerRules()      {}
+func (s *Server) registerBudgets()    {}
+func (s *Server) registerRecurring()  {}
+func (s *Server) registerImports()    {}
+func (s *Server) registerSync()       {}
+func (s *Server) registerStatic()     {}
