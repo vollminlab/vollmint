@@ -1,4 +1,5 @@
 /vollmint
+/bin/
 *.csv
 !internal/venmo/testdata/*.csv
 .env
