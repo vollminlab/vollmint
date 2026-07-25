@@ -62,6 +62,17 @@ func Summary(ctx context.Context, s *store.Store, view, month string) (SummaryRe
 	return res, nil
 }
 
+// RecurringItem is a detected recurring charge.
+type RecurringItem struct {
+	Payee     string `json:"payee"`
+	Count     int    `json:"count"`
+	Months    int    `json:"months"`
+	AvgAmount string `json:"avg_amount"`
+	LastSeen  string `json:"last_seen"`
+	FirstSeen string `json:"first_seen"`
+	IsNew     bool   `json:"is_new"`
+}
+
 // CategorySpend is one row of the spend-by-category report.
 type CategorySpend struct {
 	CategoryID int    `json:"category_id"`
@@ -100,6 +111,49 @@ func SpendByCategory(ctx context.Context, s *store.Store, view, month string) ([
 			return nil, err
 		}
 		out = append(out, cs)
+	}
+	return out, rows.Err()
+}
+
+// Recurring detects recurring charges: payees with spend in >=3 distinct
+// months. is_new flags payees whose first charge is within the given month.
+// view filters by effective owner; the month only affects the is_new flag and
+// is NOT a spend filter (recurrence is judged across all history).
+func Recurring(ctx context.Context, s *store.Store, view, month string) ([]RecurringItem, error) {
+	own, args := ownerFilter(view, 2)
+	q := `
+		WITH spend AS (
+		  SELECT t.payee, -t.amount AS mag, t.posted,
+		         date_trunc('month', t.posted) AS m
+		  FROM transactions t
+		  JOIN accounts a ON a.id = t.account_id
+		  LEFT JOIN categories c ON c.id = t.category_id
+		  WHERE t.amount < 0 AND t.payee <> ''
+		    AND t.transfer_peer_id IS NULL
+		    AND (c.kind IS NULL OR c.kind <> 'transfer')` + own + `
+		)
+		SELECT payee, count(*)::int, count(DISTINCT m)::int,
+		       round(avg(mag), 2)::text,
+		       to_char(max(posted),'YYYY-MM-DD'),
+		       to_char(min(posted),'YYYY-MM-DD'),
+		       (min(posted) >= $1::date AND min(posted) < ($1::date + interval '1 month')) AS is_new
+		FROM spend
+		GROUP BY payee
+		HAVING count(DISTINCT m) >= 3
+		ORDER BY avg(mag) DESC, payee`
+	full := append([]any{month + "-01"}, args...)
+	rows, err := s.Pool.Query(ctx, q, full...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]RecurringItem, 0)
+	for rows.Next() {
+		var ri RecurringItem
+		if err := rows.Scan(&ri.Payee, &ri.Count, &ri.Months, &ri.AvgAmount, &ri.LastSeen, &ri.FirstSeen, &ri.IsNew); err != nil {
+			return nil, err
+		}
+		out = append(out, ri)
 	}
 	return out, rows.Err()
 }

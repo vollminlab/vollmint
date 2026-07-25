@@ -139,3 +139,56 @@ func TestSummaryMonthBoundary(t *testing.T) {
 		t.Errorf("July SpendByCategory row0 = %+v", rows[0])
 	}
 }
+
+func TestRecurring(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	// Netflix charged 3 distinct months → recurring
+	seedSpend(t, s, "ally-s", "scott", "nf1", "2026-05-10", "-15.99", "Subscriptions")
+	seedSpend(t, s, "ally-s", "scott", "nf2", "2026-06-10", "-15.99", "Subscriptions")
+	seedSpend(t, s, "ally-s", "scott", "nf3", "2026-07-10", "-15.99", "Subscriptions")
+	// set the payee explicitly so grouping keys on it
+	if _, err := s.Pool.Exec(ctx, `UPDATE transactions SET payee='NETFLIX' WHERE external_id IN ('nf1','nf2','nf3')`); err != nil {
+		t.Fatalf("set payee: %v", err)
+	}
+	// A one-off purchase must NOT be flagged recurring
+	seedSpend(t, s, "ally-s", "scott", "one", "2026-07-11", "-80.00", "Shopping")
+	if _, err := s.Pool.Exec(ctx, `UPDATE transactions SET payee='ONE OFF STORE' WHERE external_id='one'`); err != nil {
+		t.Fatalf("set payee: %v", err)
+	}
+
+	rows, err := Recurring(ctx, s, "household", "2026-07")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d recurring, want 1: %+v", len(rows), rows)
+	}
+	if rows[0].Payee != "NETFLIX" || rows[0].AvgAmount != "15.99" {
+		t.Errorf("recurring row = %+v", rows[0])
+	}
+	if rows[0].Months < 3 {
+		t.Errorf("months = %d, want >=3", rows[0].Months)
+	}
+}
+
+func TestRecurringFlagsNew(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	// A subscription whose first charge is in the current month → is_new
+	// Span 3 months with first charge in July: 2026-07-01, 2026-08-01, 2026-09-01
+	seedSpend(t, s, "ally-s", "scott", "hbo1", "2026-07-01", "-10.00", "Subscriptions")
+	seedSpend(t, s, "ally-s", "scott", "hbo2", "2026-08-01", "-10.00", "Subscriptions")
+	seedSpend(t, s, "ally-s", "scott", "hbo3", "2026-09-01", "-10.00", "Subscriptions")
+	if _, err := s.Pool.Exec(ctx, `UPDATE transactions SET payee='HBO MAX' WHERE external_id IN ('hbo1','hbo2','hbo3')`); err != nil {
+		t.Fatalf("set payee: %v", err)
+	}
+
+	rows, err := Recurring(ctx, s, "household", "2026-07")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || !rows[0].IsNew {
+		t.Fatalf("want 1 recurring flagged new, got %+v", rows)
+	}
+}
