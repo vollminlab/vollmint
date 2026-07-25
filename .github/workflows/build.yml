@@ -38,9 +38,12 @@ jobs:
           REF="${{ github.ref_name }}"
           echo "SEMVER=${REF#v}" >> "$GITHUB_ENV"
       - name: Login to Harbor OCI
+        env:
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
         run: |
-          echo "${{ secrets.HARBOR_PASSWORD }}" | helm registry login harbor.vollminlab.com \
-            --username "${{ secrets.HARBOR_USERNAME }}" --password-stdin
+          echo "$HARBOR_PASSWORD" | helm registry login harbor.vollminlab.com \
+            --username "$HARBOR_USERNAME" --password-stdin
       - name: Package and push chart
         run: |
           helm package charts/vollmint --version "${SEMVER}" --app-version "${SEMVER}"
