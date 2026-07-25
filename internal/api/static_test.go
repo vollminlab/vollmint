@@ -47,3 +47,12 @@ func TestUnknownAPIStill404(t *testing.T) {
 		t.Fatalf("unknown api status=%d, want 404 (never SPA fallback)", rec.Code)
 	}
 }
+
+func TestBareAPIPathStill404(t *testing.T) {
+	srv := New(nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("bare /api status=%d, want 404 (never SPA fallback)", rec.Code)
+	}
+}

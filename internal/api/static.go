@@ -25,7 +25,7 @@ func (s *Server) registerStatic() {
 
 	s.mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		// /api/* that reached here matched no API route → 404 (never SPA).
-		if strings.HasPrefix(r.URL.Path, "/api/") {
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
 		}
