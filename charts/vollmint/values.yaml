@@ -1,0 +1,36 @@
+image:
+  repository: harbor.vollminlab.com/vollminlab/vollmint
+  tag: ""            # defaults to Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: harbor-vollminlab-pull
+
+# CNPG auto-generated app credentials; key "uri" is the full DSN
+database:
+  secretName: vollmint-db-app
+  secretKey: uri
+
+sync:
+  schedule: "10 6,18 * * *"   # UTC; SimpleFIN data refreshes ~daily
+  suspend: false
+  simplefinSecretName: vollmint-simplefin
+  simplefinSecretKey: token
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+nameOverride: ""
+fullnameOverride: ""

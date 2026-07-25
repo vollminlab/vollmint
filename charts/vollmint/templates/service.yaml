@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vollmint.fullname" . }}
+  labels:
+    {{- include "vollmint.labels" . | nindent 6 }}
+spec:
+  selector:
+    {{- include "vollmint.selectorLabels" . | nindent 6 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
