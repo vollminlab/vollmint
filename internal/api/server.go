@@ -93,7 +93,5 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
 }
 
-// --- temporary stubs (each replaced by its own task) ---
-func (s *Server) registerImports() {}
-func (s *Server) registerSync()    {}
+// --- temporary stub (to be replaced) ---
 func (s *Server) registerStatic()  {}

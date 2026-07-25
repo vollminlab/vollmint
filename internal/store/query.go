@@ -269,6 +269,17 @@ func (s *Store) DeleteRule(ctx context.Context, id int) error {
 	return nil
 }
 
+// SyncRun is one ingestion run (sync or CSV import) for the status endpoint.
+type SyncRun struct {
+	ID           int64   `json:"id"`
+	Kind         string  `json:"kind"`
+	Started      string  `json:"started"`
+	Finished     *string `json:"finished"`
+	Status       string  `json:"status"`
+	RowsUpserted int     `json:"rows_upserted"`
+	Detail       string  `json:"detail"`
+}
+
 // BudgetItem is a budget for a category in a month. Amount is a decimal string.
 type BudgetItem struct {
 	CategoryID   int    `json:"category_id"`
@@ -331,4 +342,27 @@ func (s *Store) PutBudgets(ctx context.Context, month string, items []BudgetItem
 	}
 
 	return tx.Commit(ctx)
+}
+
+// SyncStatus returns the most recent ingestion runs, newest first.
+func (s *Store) SyncStatus(ctx context.Context, limit int) ([]SyncRun, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id, kind, to_char(started,'YYYY-MM-DD"T"HH24:MI:SSOF'),
+		       to_char(finished,'YYYY-MM-DD"T"HH24:MI:SSOF'),
+		       status, rows_upserted, detail
+		FROM sync_runs ORDER BY started DESC, id DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]SyncRun, 0)
+	for rows.Next() {
+		var r SyncRun
+		if err := rows.Scan(&r.ID, &r.Kind, &r.Started, &r.Finished,
+			&r.Status, &r.RowsUpserted, &r.Detail); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }

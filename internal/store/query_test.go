@@ -302,3 +302,24 @@ func TestPutBudgetsBadAmount(t *testing.T) {
 		t.Fatalf("want ErrInvalidAmount, got %v", err)
 	}
 }
+
+func TestSyncStatus(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	_, err := s.Pool.Exec(ctx, `
+		INSERT INTO sync_runs (kind, status, rows_upserted, detail, finished)
+		VALUES ('simplefin','ok',5,'',now()), ('venmo_csv','failed',0,'bad header',now())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs, err := s.SyncStatus(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("got %d runs, want 2", len(runs))
+	}
+	if runs[0].Kind == "" || runs[0].Status == "" {
+		t.Fatalf("run not populated: %+v", runs[0])
+	}
+}
