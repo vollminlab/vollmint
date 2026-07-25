@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/vollminlab/vollmint/internal/store"
 )
 
@@ -98,6 +99,11 @@ func (s *Server) handlePatchTransaction(w http.ResponseWriter, r *http.Request) 
 	})
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "transaction not found")
+		return
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && (pgErr.Code == "23503" || pgErr.Code == "23514") {
+		writeErr(w, http.StatusBadRequest, "invalid category_id or owner_override")
 		return
 	}
 	if err != nil {

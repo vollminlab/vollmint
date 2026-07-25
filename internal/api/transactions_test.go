@@ -80,7 +80,9 @@ func TestPatchTransactionSetsCategory(t *testing.T) {
 	s := testStore(t)
 	id := seedTxn(t, s, "joint1", "joint", "j1", "2026-07-10", "-40.00", "Dinner")
 	var diningID int
-	_ = s.Pool.QueryRow(nil0(), `SELECT id FROM categories WHERE name='Dining'`).Scan(&diningID)
+	if err := s.Pool.QueryRow(nil0(), `SELECT id FROM categories WHERE name='Dining'`).Scan(&diningID); err != nil {
+		t.Fatalf("lookup Dining: %v", err)
+	}
 	srv := New(s)
 
 	body := strings.NewReader(`{"category_id": ` + itoa(diningID) + `}`)
@@ -89,6 +91,14 @@ func TestPatchTransactionSetsCategory(t *testing.T) {
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var gotCat *int
+	if err := s.Pool.QueryRow(nil0(), `SELECT category_id FROM transactions WHERE id=$1`, id).Scan(&gotCat); err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if gotCat == nil || *gotCat != diningID {
+		t.Fatalf("category_id = %v, want %d", gotCat, diningID)
 	}
 }
 
@@ -112,6 +122,84 @@ func TestPatchTransactionBadID(t *testing.T) {
 	}
 }
 
-func itoa(i int) string    { return strconv.Itoa(i) }
+func TestPatchTransactionOwnerOverride(t *testing.T) {
+	s := testStore(t)
+	id := seedTxn(t, s, "joint1", "joint", "j1", "2026-07-10", "-40.00", "Dinner")
+	srv := New(s)
+
+	// Set owner_override to "scott"
+	body := strings.NewReader(`{"owner_override":"scott"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/transactions/"+itoa64(id), body)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set owner status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var gotOwner *string
+	if err := s.Pool.QueryRow(nil0(), `SELECT owner_override FROM transactions WHERE id=$1`, id).Scan(&gotOwner); err != nil {
+		t.Fatalf("re-query after set: %v", err)
+	}
+	if gotOwner == nil || *gotOwner != "scott" {
+		t.Fatalf("owner_override = %v, want scott", gotOwner)
+	}
+
+	// Clear owner_override with empty string
+	body = strings.NewReader(`{"owner_override":""}`)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPatch, "/api/transactions/"+itoa64(id), body)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("clear owner status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	gotOwner = nil
+	if err := s.Pool.QueryRow(nil0(), `SELECT owner_override FROM transactions WHERE id=$1`, id).Scan(&gotOwner); err != nil {
+		t.Fatalf("re-query after clear: %v", err)
+	}
+	if gotOwner != nil {
+		t.Fatalf("owner_override = %v, want NULL", gotOwner)
+	}
+}
+
+func TestPatchTransactionBadJSON(t *testing.T) {
+	srv := New(testStore(t))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/transactions/1", strings.NewReader(`{"category_id":`))
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400", rec.Code)
+	}
+}
+
+func TestPatchTransactionBadCategoryFK(t *testing.T) {
+	s := testStore(t)
+	id := seedTxn(t, s, "joint1", "joint", "j1", "2026-07-10", "-40.00", "Dinner")
+	srv := New(s)
+
+	body := strings.NewReader(`{"category_id": 999999}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/transactions/"+itoa64(id), body)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400", rec.Code)
+	}
+}
+
+func TestPatchTransactionBadOwnerValue(t *testing.T) {
+	s := testStore(t)
+	id := seedTxn(t, s, "joint1", "joint", "j1", "2026-07-10", "-40.00", "Dinner")
+	srv := New(s)
+
+	body := strings.NewReader(`{"owner_override":"household"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/transactions/"+itoa64(id), body)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400", rec.Code)
+	}
+}
+
+func itoa(i int) string     { return strconv.Itoa(i) }
 func itoa64(i int64) string { return strconv.FormatInt(i, 10) }
 func nil0() context.Context { return context.Background() }
