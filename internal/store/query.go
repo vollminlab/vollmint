@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -100,4 +101,46 @@ func (s *Store) ListTransactions(ctx context.Context, f TxnFilter) ([]TxnRow, er
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// ErrNotFound is returned when an update targets a row that does not exist.
+var ErrNotFound = errors.New("not found")
+
+// TxnPatch is a partial update to a transaction. A nil field is left unchanged.
+// For OwnerOverride, a non-nil pointer to "" clears the override to NULL;
+// any other value sets it (validated by the DB CHECK constraint).
+type TxnPatch struct {
+	CategoryID    *int
+	OwnerOverride *string
+}
+
+// UpdateTransaction applies a partial update. Returns ErrNotFound if no row
+// with the given id exists. category_id and owner_override are the only
+// user-editable fields (see spec API surface).
+func (s *Store) UpdateTransaction(ctx context.Context, id int64, p TxnPatch) error {
+	sets := []string{"updated_at=now()"}
+	args := []any{}
+	if p.CategoryID != nil {
+		args = append(args, *p.CategoryID)
+		sets = append(sets, fmt.Sprintf("category_id=$%d", len(args)))
+	}
+	if p.OwnerOverride != nil {
+		if *p.OwnerOverride == "" {
+			sets = append(sets, "owner_override=NULL")
+		} else {
+			args = append(args, *p.OwnerOverride)
+			sets = append(sets, fmt.Sprintf("owner_override=$%d", len(args)))
+		}
+	}
+	args = append(args, id)
+	q := fmt.Sprintf("UPDATE transactions SET %s WHERE id=$%d",
+		strings.Join(sets, ", "), len(args))
+	tag, err := s.Pool.Exec(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

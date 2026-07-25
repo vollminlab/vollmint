@@ -114,3 +114,53 @@ func TestListTransactionsUncategorizedAndOwnerOverride(t *testing.T) {
 		t.Fatalf("joint view still sees overridden rows: %v", got)
 	}
 }
+
+func TestUpdateTransaction(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	id := seedTxn(t, s, "joint1", "joint", "j1", "2026-07-10", "-40.00", "Dinner", nil)
+
+	var diningID int
+	if err := s.Pool.QueryRow(ctx, `SELECT id FROM categories WHERE name='Dining'`).Scan(&diningID); err != nil {
+		t.Fatal(err)
+	}
+	owner := "scott"
+	if err := s.UpdateTransaction(ctx, id, TxnPatch{CategoryID: &diningID, OwnerOverride: &owner}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := s.ListTransactions(ctx, TxnFilter{View: "household", Month: "2026-07"})
+	if len(rows) != 1 || rows[0].CategoryName == nil || *rows[0].CategoryName != "Dining" {
+		t.Fatalf("category not updated: %+v", rows)
+	}
+	if rows[0].EffectiveOwner != "scott" {
+		t.Fatalf("owner override not applied: %+v", rows[0])
+	}
+}
+
+func TestUpdateTransactionClearOwnerOverride(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	id := seedTxn(t, s, "joint1", "joint", "j1", "2026-07-10", "-40.00", "Dinner", nil)
+	scott := "scott"
+	if err := s.UpdateTransaction(ctx, id, TxnPatch{OwnerOverride: &scott}); err != nil {
+		t.Fatal(err)
+	}
+	// empty-string sentinel clears the override back to NULL
+	empty := ""
+	if err := s.UpdateTransaction(ctx, id, TxnPatch{OwnerOverride: &empty}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := s.ListTransactions(ctx, TxnFilter{View: "joint", Month: "2026-07"})
+	if len(rows) != 1 {
+		t.Fatalf("cleared override should return to joint view: %+v", rows)
+	}
+}
+
+func TestUpdateTransactionNotFound(t *testing.T) {
+	s := testDB(t)
+	diningID := 1
+	err := s.UpdateTransaction(context.Background(), 999999, TxnPatch{CategoryID: &diningID})
+	if err != ErrNotFound {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
