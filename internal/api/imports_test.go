@@ -2,6 +2,8 @@ package api
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -43,8 +45,30 @@ func TestVenmoUpload(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("upload status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "upserted") {
-		t.Fatalf("body missing upserted count: %s", rec.Body.String())
+
+	// Decode response to verify actual counts
+	var body struct {
+		Upserted    int `json:"upserted"`
+		Categorized int `json:"categorized"`
+		Paired      int `json:"paired"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+
+	// Fixture venmo-2026.csv has exactly 3 data rows (verified in importvenmo_test.go)
+	if body.Upserted != 3 {
+		t.Fatalf("response upserted=%d, want 3", body.Upserted)
+	}
+
+	// Verify rows actually landed in the database
+	var n int
+	if err := s.Pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM transactions WHERE source = 'venmo_csv'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != body.Upserted {
+		t.Fatalf("db has %d venmo_csv rows, response claimed %d", n, body.Upserted)
 	}
 }
 
