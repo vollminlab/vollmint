@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -72,10 +73,16 @@ func (s *Server) handleCreateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Re-run rules over uncategorized history so the new rule takes effect now.
+	// ApplyRules can't join CreateRule's transaction, so we roll back by deleting
+	// the rule on error to keep 500 = nothing-persisted, retry-safe semantics.
 	n, err := ingest.ApplyRules(r.Context(), s.store)
 	if err != nil {
-		log.Printf("apply rules after create: %v", err)
-		writeErr(w, http.StatusInternalServerError, "rule created but re-apply failed")
+		log.Printf("apply rules after create rule %d: %v", id, err)
+		delErr := s.store.DeleteRule(context.WithoutCancel(r.Context()), id)
+		if delErr != nil {
+			log.Printf("rollback rule %d after failed re-apply: %v", id, delErr)
+		}
+		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "recategorized": n})

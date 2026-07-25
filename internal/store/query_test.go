@@ -2,8 +2,11 @@ package store
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // seedTxn inserts one account (if new) and one categorized/uncategorized txn.
@@ -227,5 +230,21 @@ func TestRuleCRUD(t *testing.T) {
 	}
 	if err := s.DeleteRule(ctx, id); err != ErrNotFound {
 		t.Fatalf("second delete = %v, want ErrNotFound", err)
+	}
+}
+
+func TestCreateRuleBadCategory(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	_, err := s.CreateRule(ctx, 1, "substring", "X", 999999)
+	if err == nil {
+		t.Fatal("want error for invalid category_id")
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		t.Fatalf("want PgError, got %T", err)
+	}
+	if pgErr.Code != "23503" {
+		t.Fatalf("want FK error code 23503, got %s", pgErr.Code)
 	}
 }
