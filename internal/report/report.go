@@ -10,15 +10,15 @@ import (
 	"github.com/vollminlab/vollmint/internal/store"
 )
 
-// ownerFilter returns the SQL fragment + arg for a view, or ("", nil) for
-// household. The alias for transactions is "t" and accounts is "a".
-func ownerFilter(view string) (string, []any) {
+// ownerFilter returns a SQL fragment filtering on the effective owner
+// (COALESCE(t.owner_override, a.owner)) for scott/nikki/joint views, using
+// placeholder $argN. The household view applies no filter.
+func ownerFilter(view string, argN int) (string, []any) {
 	switch view {
 	case "scott", "nikki", "joint":
-		return " AND COALESCE(t.owner_override, a.owner) = $2", []any{view}
-	default:
-		return "", nil
+		return fmt.Sprintf(" AND COALESCE(t.owner_override, a.owner) = $%d", argN), []any{view}
 	}
+	return "", nil
 }
 
 // notTransfer excludes transfer rows from spend/income math.
@@ -38,7 +38,7 @@ type SummaryResult struct {
 // Summary computes In/Out/Vices for the month+view and the month's total budget.
 func Summary(ctx context.Context, s *store.Store, view, month string) (SummaryResult, error) {
 	res := SummaryResult{In: "0.00", Out: "0.00", Vices: "0.00", BudgetTotal: "0.00", Month: month, View: view}
-	own, args := ownerFilter(view)
+	own, args := ownerFilter(view, 2)
 	q := `
 		SELECT
 		  COALESCE(SUM(t.amount) FILTER (WHERE t.amount > 0), 0)::text,
@@ -74,7 +74,7 @@ type CategorySpend struct {
 // SpendByCategory returns spend per category for the month+view, descending by
 // spent, with each category's budget (if any) for that month.
 func SpendByCategory(ctx context.Context, s *store.Store, view, month string) ([]CategorySpend, error) {
-	own, args := ownerFilter(view)
+	own, args := ownerFilter(view, 2)
 	q := `
 		SELECT c.id, c.name, (-SUM(t.amount))::text, c.is_vice,
 		       COALESCE(b.amount::text, '')
@@ -93,7 +93,7 @@ func SpendByCategory(ctx context.Context, s *store.Store, view, month string) ([
 		return nil, err
 	}
 	defer rows.Close()
-	var out []CategorySpend
+	out := make([]CategorySpend, 0)
 	for rows.Next() {
 		var cs CategorySpend
 		if err := rows.Scan(&cs.CategoryID, &cs.Category, &cs.Spent, &cs.IsVice, &cs.Budget); err != nil {
