@@ -94,7 +94,6 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 }
 
 // --- temporary stubs (each replaced by its own task) ---
-func (s *Server) registerTransactions() {}
 func (s *Server) registerSummary()      {}
 func (s *Server) registerCategories()   {}
 func (s *Server) registerRules()        {}
