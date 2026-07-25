@@ -218,3 +218,50 @@ func (s *Store) UpdateCategory(ctx context.Context, id int, p CategoryPatch) err
 	}
 	return nil
 }
+
+// Rule is a payee→category matcher.
+type Rule struct {
+	ID         int    `json:"id"`
+	Priority   int    `json:"priority"`
+	MatchType  string `json:"match_type"`
+	Pattern    string `json:"pattern"`
+	CategoryID int    `json:"category_id"`
+}
+
+func (s *Store) ListRules(ctx context.Context) ([]Rule, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT id, priority, match_type, pattern, category_id FROM category_rules ORDER BY priority, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Rule, 0)
+	for rows.Next() {
+		var r Rule
+		if err := rows.Scan(&r.ID, &r.Priority, &r.MatchType, &r.Pattern, &r.CategoryID); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateRule(ctx context.Context, priority int, matchType, pattern string, categoryID int) (int, error) {
+	var id int
+	err := s.Pool.QueryRow(ctx,
+		`INSERT INTO category_rules (priority, match_type, pattern, category_id)
+		 VALUES ($1,$2,$3,$4) RETURNING id`,
+		priority, matchType, pattern, categoryID).Scan(&id)
+	return id, err
+}
+
+func (s *Store) DeleteRule(ctx context.Context, id int) error {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM category_rules WHERE id=$1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

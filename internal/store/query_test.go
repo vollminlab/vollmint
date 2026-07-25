@@ -198,3 +198,34 @@ func TestCategoryCRUD(t *testing.T) {
 }
 
 func boolp(b bool) *bool { return &b }
+
+func TestRuleCRUD(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	var diningID int
+	_ = s.Pool.QueryRow(ctx, `SELECT id FROM categories WHERE name='Dining'`).Scan(&diningID)
+
+	id, err := s.CreateRule(ctx, 10, "substring", "CHIPOTLE", diningID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, err := s.ListRules(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, r := range rules {
+		if r.ID == id && r.Pattern == "CHIPOTLE" && r.CategoryID == diningID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("created rule not listed")
+	}
+	if err := s.DeleteRule(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteRule(ctx, id); err != ErrNotFound {
+		t.Fatalf("second delete = %v, want ErrNotFound", err)
+	}
+}
