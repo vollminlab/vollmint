@@ -112,7 +112,7 @@ func parseAmount(s string) (string, error) {
 }
 
 // FundingSource extracts the funding source from a parsed row's raw json.
-// Diagnostic surface for the UI ("funded by Ally" vs "Venmo balance") —
+// Diagnostic surface for the UI ("funded by bank" vs "Venmo balance") —
 // the matcher itself pairs purely on amount + date.
 func FundingSource(raw []byte) string {
 	var m map[string]string
