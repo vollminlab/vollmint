@@ -76,16 +76,41 @@ func TestListTransactionsUncategorizedAndOwnerOverride(t *testing.T) {
 		`UPDATE transactions SET owner_override='scott' WHERE id=$1`, id); err != nil {
 		t.Fatal(err)
 	}
+
+	// Get a real category ID for strengthening the uncategorized filter test
+	var catID int
+	if err := s.Pool.QueryRow(ctx, `SELECT id FROM categories ORDER BY id LIMIT 1`).Scan(&catID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Seed a second transaction in the same scott/2026-07 window with a category
+	id2 := seedTxn(t, s, "joint1", "joint", "j2", "2026-07-11", "-25.00", "Lunch", &catID)
+	if _, err := s.Pool.Exec(ctx,
+		`UPDATE transactions SET owner_override='scott' WHERE id=$1`, id2); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test with Uncategorized: true → should return only the first (uncategorized) row
 	got, err := s.ListTransactions(ctx, TxnFilter{View: "scott", Month: "2026-07", Uncategorized: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].EffectiveOwner != "scott" {
-		t.Fatalf("override into scott view failed: %v", got)
+	if len(got) != 1 || got[0].EffectiveOwner != "scott" || got[0].CategoryID != nil {
+		t.Fatalf("uncategorized filter failed: got %d rows, want 1 uncategorized; %v", len(got), got)
 	}
-	// joint view must NOT see it anymore (override wins)
+
+	// Test without Uncategorized filter → should return both rows
+	got, err = s.ListTransactions(ctx, TxnFilter{View: "scott", Month: "2026-07"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("scott/July without filter = %d rows, want 2", len(got))
+	}
+
+	// joint view must NOT see either anymore (override wins)
 	got, _ = s.ListTransactions(ctx, TxnFilter{View: "joint", Month: "2026-07"})
 	if len(got) != 0 {
-		t.Fatalf("joint view still sees overridden row: %v", got)
+		t.Fatalf("joint view still sees overridden rows: %v", got)
 	}
 }

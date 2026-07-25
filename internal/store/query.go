@@ -88,7 +88,7 @@ func (s *Store) ListTransactions(ctx context.Context, f TxnFilter) ([]TxnRow, er
 		return nil, err
 	}
 	defer rows.Close()
-	var out []TxnRow
+	out := make([]TxnRow, 0)
 	for rows.Next() {
 		var r TxnRow
 		if err := rows.Scan(&r.ID, &r.Source, &r.AccountID, &r.AccountName, &r.Posted,
