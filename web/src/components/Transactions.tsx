@@ -8,7 +8,7 @@ export function Transactions({ view, month }: { view: View; month: string }) {
   const [params] = useSearchParams()
   const categoryParam = params.get('category')
   const categoryId = categoryParam ? Number(categoryParam) : undefined
-  const q = params.get('q') ?? undefined
+  const q = params.get('q') || undefined
 
   const [rows, setRows] = useState<Txn[]>([])
   const [cats, setCats] = useState<Category[]>([])

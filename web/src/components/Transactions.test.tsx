@@ -97,4 +97,14 @@ describe('Transactions q search filter', () => {
     )
     await waitFor(() => expect(screen.getByText(/Filtered by search/i)).toBeInTheDocument())
   })
+
+  it('treats an empty q param as no search filter', async () => {
+    render(
+      <MemoryRouter initialEntries={['/transactions?view=scott&month=2026-07&q=']}>
+        <Transactions view="scott" month="2026-07" />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('WHOLE FOODS')).toBeInTheDocument())
+    expect(screen.queryByText(/Filtered by search/i)).not.toBeInTheDocument()
+  })
 })
