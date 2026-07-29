@@ -71,6 +71,19 @@ describe('Rules', () => {
     expect(fetchMock.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === 'POST')).toBe(false)
   })
 
+  it('rejects a cleared or non-positive priority', async () => {
+    const fetchMock = stubFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    render(<Rules />)
+    await waitFor(() => expect(screen.getByText('netflix')).toBeInTheDocument())
+    fireEvent.change(screen.getByLabelText('new rule pattern'), { target: { value: 'spotify' } })
+    fireEvent.change(screen.getByLabelText('new rule category'), { target: { value: '6' } })
+    fireEvent.change(screen.getByLabelText('new rule priority'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add rule' }))
+    await waitFor(() => expect(screen.getByText(/Priority must be a positive integer/i)).toBeInTheDocument())
+    expect(fetchMock.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === 'POST')).toBe(false)
+  })
+
   it('deletes a rule', async () => {
     const fetchMock = stubFetch()
     vi.stubGlobal('fetch', fetchMock)

@@ -41,6 +41,10 @@ export function Rules() {
       setStatus('Pattern and category are required.')
       return
     }
+    if (!Number.isInteger(Number(priority)) || Number(priority) <= 0) {
+      setStatus('Priority must be a positive integer.')
+      return
+    }
     try {
       const res = await createRule({
         priority: Number(priority),
@@ -90,6 +94,7 @@ export function Rules() {
           <input
             aria-label="new rule priority"
             type="number"
+            min="1"
             style={{ width: '5rem' }}
             value={priority}
             onChange={(e) => setPriority(e.target.value)}
