@@ -39,6 +39,7 @@ func (s *Server) routes() {
 	s.registerRules()
 	s.registerBudgets()
 	s.registerRecurring()
+	s.registerTrends()
 	s.registerImports()
 	s.registerSync()
 	s.registerStatic() // must be last: it owns the catch-all "/"
