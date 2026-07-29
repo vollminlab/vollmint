@@ -36,6 +36,38 @@ func TestGetTransactions(t *testing.T) {
 	}
 }
 
+func TestGetTransactionsQueryFilter(t *testing.T) {
+	s := testStore(t)
+	seedTxn(t, s, "ally-s", "scott", "s1", "2026-07-05", "-10.00", "Trader Joes")
+	seedTxn(t, s, "ally-s", "scott", "s2", "2026-07-06", "-20.00", "trader joes online")
+	seedTxn(t, s, "ally-s", "scott", "s3", "2026-07-07", "-30.00", "Coffee Shop")
+	srv := New(s)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/transactions?view=household&month=2026-07&q=trader", nil)
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Transactions []struct {
+			ID    int64  `json:"id"`
+			Payee string `json:"payee"`
+		} `json:"transactions"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Transactions) != 2 {
+		t.Fatalf("got %d transactions, want 2: %+v", len(body.Transactions), body.Transactions)
+	}
+	for _, txn := range body.Transactions {
+		if txn.Payee == "Coffee Shop" {
+			t.Fatalf("query filter matched non-matching row: %+v", txn)
+		}
+	}
+}
+
 func TestGetTransactionsRejectsBadMonth(t *testing.T) {
 	srv := New(testStore(t))
 	rec := httptest.NewRecorder()

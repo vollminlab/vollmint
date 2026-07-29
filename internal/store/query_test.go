@@ -118,6 +118,27 @@ func TestListTransactionsUncategorizedAndOwnerOverride(t *testing.T) {
 	}
 }
 
+func TestListTransactionsQueryFilter(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	seedTxn(t, s, "ally-s", "scott", "s1", "2026-07-05", "-10.00", "Trader Joes", nil)
+	seedTxn(t, s, "ally-s", "scott", "s2", "2026-07-06", "-20.00", "trader joes online", nil)
+	seedTxn(t, s, "ally-s", "scott", "s3", "2026-07-07", "-30.00", "Coffee Shop", nil)
+
+	got, err := s.ListTransactions(ctx, TxnFilter{View: "household", Month: "2026-07", Query: "trader"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("query filter = %d rows, want 2: %+v", len(got), got)
+	}
+	for _, r := range got {
+		if r.Payee == "Coffee Shop" {
+			t.Fatalf("query filter matched non-matching row: %+v", r)
+		}
+	}
+}
+
 func TestUpdateTransaction(t *testing.T) {
 	s := testDB(t)
 	ctx := context.Background()
