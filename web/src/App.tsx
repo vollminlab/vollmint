@@ -7,6 +7,9 @@ import { MonthPager } from './components/MonthPager'
 import { Dashboard } from './components/Dashboard'
 import { Transactions } from './components/Transactions'
 import { Budgets } from './components/Budgets'
+import { Recurring } from './components/Recurring'
+import { Trends } from './components/Trends'
+import { Rules } from './components/Rules'
 
 const isView = (v: string): v is View =>
   v === 'scott' || v === 'nikki' || v === 'joint' || v === 'household'
@@ -44,7 +47,10 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Dashboard view={view} month={month} />} />
         <Route path="/transactions" element={<Transactions view={view} month={month} />} />
+        <Route path="/recurring" element={<Recurring view={view} month={month} />} />
+        <Route path="/trends" element={<Trends view={view} month={month} />} />
         <Route path="/budgets" element={<Budgets month={month} />} />
+        <Route path="/rules" element={<Rules />} />
       </Routes>
     </div>
   )

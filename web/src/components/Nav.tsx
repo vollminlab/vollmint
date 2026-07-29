@@ -20,7 +20,10 @@ export function Nav({ search }: { search: string }) {
     <nav style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid #262a33', marginBottom: '1rem' }}>
       {link('/', 'Dashboard')}
       {link('/transactions', 'Transactions')}
+      {link('/recurring', 'Recurring')}
+      {link('/trends', 'Trends')}
       {link('/budgets', 'Budgets')}
+      {link('/rules', 'Rules')}
     </nav>
   )
 }
