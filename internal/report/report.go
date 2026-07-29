@@ -157,3 +157,58 @@ func Recurring(ctx context.Context, s *store.Store, view, month string) ([]Recur
 	}
 	return out, rows.Err()
 }
+
+// MonthFlow is one month of the income/spend trend. In/Out are decimal
+// strings; months with no activity carry "0".
+type MonthFlow struct {
+	Month string `json:"month"` // YYYY-MM
+	In    string `json:"in"`
+	Out   string `json:"out"`
+}
+
+// MonthlyFlow returns income and spend per month for the `months`-wide window
+// ending at (and including) month. Every month in the window is present even
+// with zero activity, so charts get a continuous axis. Transfers are excluded
+// exactly as in Summary.
+func MonthlyFlow(ctx context.Context, s *store.Store, view, month string, months int) ([]MonthFlow, error) {
+	own, args := ownerFilter(view, 3)
+	q := `
+		WITH months AS (
+		  SELECT generate_series(
+		    $1::date - make_interval(months => $2 - 1),
+		    $1::date, interval '1 month')::date AS m
+		),
+		flows AS (
+		  SELECT date_trunc('month', t.posted)::date AS m,
+		         SUM(t.amount) FILTER (WHERE t.amount > 0) AS inflow,
+		         -SUM(t.amount) FILTER (WHERE t.amount < 0) AS outflow
+		  FROM transactions t
+		  JOIN accounts a ON a.id = t.account_id
+		  LEFT JOIN categories c ON c.id = t.category_id
+		  WHERE t.posted >= $1::date - make_interval(months => $2 - 1)
+		    AND t.posted < ($1::date + interval '1 month')` +
+		notTransfer + own + `
+		  GROUP BY 1
+		)
+		SELECT to_char(months.m, 'YYYY-MM'),
+		       COALESCE(flows.inflow, 0)::text,
+		       COALESCE(flows.outflow, 0)::text
+		FROM months
+		LEFT JOIN flows ON flows.m = months.m
+		ORDER BY months.m`
+	full := append([]any{month + "-01", months}, args...)
+	rows, err := s.Pool.Query(ctx, q, full...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]MonthFlow, 0)
+	for rows.Next() {
+		var mf MonthFlow
+		if err := rows.Scan(&mf.Month, &mf.In, &mf.Out); err != nil {
+			return nil, err
+		}
+		out = append(out, mf)
+	}
+	return out, rows.Err()
+}

@@ -192,3 +192,52 @@ func TestRecurringFlagsNew(t *testing.T) {
 		t.Fatalf("want 1 recurring flagged new, got %+v", rows)
 	}
 }
+
+func TestMonthlyFlow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	seedSpend(t, s, "ally-s", "scott", "mf1", "2026-05-10", "-100.00", "Groceries")
+	seedSpend(t, s, "ally-s", "scott", "mf2", "2026-06-10", "-50.00", "Groceries")
+	seedSpend(t, s, "ally-s", "scott", "mf3", "2026-06-15", "2000.00", "Paycheck")
+	seedSpend(t, s, "ally-s", "scott", "mf4", "2026-07-01", "-25.00", "Dining")
+	seedSpend(t, s, "ally-s", "scott", "mf5", "2026-07-02", "-500.00", "Transfer") // must be excluded
+	seedSpend(t, s, "ally-s", "scott", "mf6", "2026-08-01", "-99.00", "Groceries") // outside window
+
+	rows, err := MonthlyFlow(ctx, s, "household", "2026-07", 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 4 {
+		t.Fatalf("got %d rows, want 4: %+v", len(rows), rows)
+	}
+	// Empty months render as "0" (COALESCE(...,0)::text — same convention as Summary).
+	want := []MonthFlow{
+		{Month: "2026-04", In: "0", Out: "0"},
+		{Month: "2026-05", In: "0", Out: "100.00"},
+		{Month: "2026-06", In: "2000.00", Out: "50.00"},
+		{Month: "2026-07", In: "0", Out: "25.00"},
+	}
+	for i, w := range want {
+		if rows[i] != w {
+			t.Errorf("row %d = %+v, want %+v", i, rows[i], w)
+		}
+	}
+}
+
+func TestMonthlyFlowViewFilter(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	seedSpend(t, s, "ally-s", "scott", "mv1", "2026-07-05", "-50.00", "Groceries")
+	seedSpend(t, s, "ally-n", "nikki", "mv2", "2026-07-06", "-30.00", "Groceries")
+
+	rows, err := MonthlyFlow(ctx, s, "scott", "2026-07", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1: %+v", len(rows), rows)
+	}
+	if rows[0] != (MonthFlow{Month: "2026-07", In: "0", Out: "50.00"}) {
+		t.Errorf("row = %+v, want scott-only 50.00", rows[0])
+	}
+}
