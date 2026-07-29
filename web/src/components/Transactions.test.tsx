@@ -73,3 +73,38 @@ describe('Transactions drill-down plumbing', () => {
     await waitFor(() => expect(screen.getByText(/Error:/)).toBeInTheDocument())
   })
 })
+
+describe('Transactions q search filter', () => {
+  it('reads q from the URL and passes it to the API', async () => {
+    const fetchMock = stubFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <MemoryRouter initialEntries={['/transactions?view=scott&month=2026-07&q=NETFLIX']}>
+        <Transactions view="scott" month="2026-07" />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('WHOLE FOODS')).toBeInTheDocument())
+    const calledUrls = fetchMock.mock.calls.map((c) => c[0] as string)
+    const txnCall = calledUrls.find((u) => u.startsWith('/api/transactions'))!
+    expect(txnCall).toContain('q=NETFLIX')
+  })
+
+  it('shows a line noting the active search filter', async () => {
+    render(
+      <MemoryRouter initialEntries={['/transactions?view=scott&month=2026-07&q=NETFLIX']}>
+        <Transactions view="scott" month="2026-07" />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText(/Filtered by search/i)).toBeInTheDocument())
+  })
+
+  it('treats an empty q param as no search filter', async () => {
+    render(
+      <MemoryRouter initialEntries={['/transactions?view=scott&month=2026-07&q=']}>
+        <Transactions view="scott" month="2026-07" />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('WHOLE FOODS')).toBeInTheDocument())
+    expect(screen.queryByText(/Filtered by search/i)).not.toBeInTheDocument()
+  })
+})

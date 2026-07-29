@@ -8,6 +8,7 @@ export function Transactions({ view, month }: { view: View; month: string }) {
   const [params] = useSearchParams()
   const categoryParam = params.get('category')
   const categoryId = categoryParam ? Number(categoryParam) : undefined
+  const q = params.get('q') || undefined
 
   const [rows, setRows] = useState<Txn[]>([])
   const [cats, setCats] = useState<Category[]>([])
@@ -16,7 +17,7 @@ export function Transactions({ view, month }: { view: View; month: string }) {
 
   const load = () => {
     setLoading(true)
-    getTransactions({ view, month, category: categoryId })
+    getTransactions({ view, month, category: categoryId, q })
       .then((d) => setRows(d.transactions))
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false))
@@ -25,7 +26,7 @@ export function Transactions({ view, month }: { view: View; month: string }) {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, month, categoryParam])
+  }, [view, month, categoryParam, q])
 
   useEffect(() => {
     getCategories().then((d) => setCats(d.categories)).catch(() => {})
@@ -50,6 +51,11 @@ export function Transactions({ view, month }: { view: View; month: string }) {
       {categoryId !== undefined && (
         <p style={{ color: 'var(--muted)' }}>
           Filtered by category: <strong>{activeCat ? activeCat.name : categoryId}</strong>
+        </p>
+      )}
+      {q !== undefined && (
+        <p style={{ color: 'var(--muted)' }}>
+          Filtered by search: <strong>{q}</strong>
         </p>
       )}
       {loading ? (

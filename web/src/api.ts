@@ -74,6 +74,12 @@ export interface Recurring {
   is_new: boolean
 }
 
+export interface TrendPoint {
+  month: string
+  in: string
+  out: string
+}
+
 export interface SyncRun {
   id: number
   kind: string
@@ -177,6 +183,10 @@ export function putBudgets(
 
 export function getRecurring(view: View, month: string): Promise<{ recurring: Recurring[] }> {
   return req(`/api/recurring${buildQuery({ view, month })}`)
+}
+
+export function getTrends(view: View, month: string, months: number): Promise<{ trends: TrendPoint[] }> {
+  return req(`/api/trends${buildQuery({ view, month, months })}`)
 }
 
 export function uploadVenmo(file: File): Promise<{ upserted: number; categorized: number; paired: number }> {
