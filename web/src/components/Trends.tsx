@@ -55,8 +55,8 @@ export function Trends({ view, month }: { view: View; month: string }) {
             contentStyle={{ background: 'var(--panel)', border: '1px solid #262a33' }}
           />
           <Legend />
-          <Bar dataKey="spending" name="Spending" fill="#f9714f" />
-          <Bar dataKey="income" name="Income" fill="#4fd18b" />
+          <Bar dataKey="spending" name="Spending" fill="var(--danger)" />
+          <Bar dataKey="income" name="Income" fill="var(--good)" />
         </BarChart>
       )}
     </div>
