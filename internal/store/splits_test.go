@@ -3,33 +3,15 @@ package store
 import (
 	"context"
 	"testing"
-	"time"
 )
 
-// seedSplitTxn creates an account + one posted, categorized-later transaction
-// and returns its DB id. Amount is the parent amount (negative = spend).
+// seedSplitTxn creates an account + one posted, uncategorized transaction and
+// returns its DB id. Amount is the parent amount (negative = spend). Thin
+// wrapper around seedTxn (internal/store/query_test.go) to avoid duplicating
+// the account-upsert + txn-upsert + id-lookup sequence.
 func seedSplitTxn(t *testing.T, s *Store, extID, amount string) int64 {
 	t.Helper()
-	ctx := context.Background()
-	if err := s.UpsertAccounts(ctx, []Account{{
-		ID: "acct-split-test", Name: "Split Test", Org: "test", Owner: "scott",
-	}}); err != nil {
-		t.Fatalf("seed account: %v", err)
-	}
-	if _, err := s.UpsertTransactions(ctx, []Txn{{
-		Source: "simplefin", ExternalID: extID, AccountID: "acct-split-test",
-		Posted: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC),
-		Amount: amount, Description: "split test txn", Payee: "SPLIT TEST",
-	}}); err != nil {
-		t.Fatalf("seed txn: %v", err)
-	}
-	var id int64
-	if err := s.Pool.QueryRow(ctx,
-		`SELECT id FROM transactions WHERE source = 'simplefin' AND external_id = $1`,
-		extID).Scan(&id); err != nil {
-		t.Fatalf("lookup txn id: %v", err)
-	}
-	return id
+	return seedTxn(t, s, "acct-split-test", "scott", extID, "2026-07-10", amount, "split test txn", nil)
 }
 
 // catID resolves a seed category name to its id.
