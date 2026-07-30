@@ -324,6 +324,105 @@ func TestPutBudgetsBadAmount(t *testing.T) {
 	}
 }
 
+func TestListTransactionsEmbedsSplits(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	id := seedSplitTxn(t, s, "embed-1", "-50.00")
+	if err := s.ReplaceSplits(ctx, id, []SplitInput{
+		{CategoryID: catID(t, s, "Dining"), Amount: "-30.00"},
+		{CategoryID: catID(t, s, "Groceries"), Amount: "-20.00"},
+	}); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	rows, err := s.ListTransactions(ctx, TxnFilter{View: "household", Month: "2026-07"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var found *TxnRow
+	for i := range rows {
+		if rows[i].ID == id {
+			found = &rows[i]
+		} else if rows[i].Splits == nil {
+			t.Fatalf("unsplit txn %d has nil Splits — want empty slice", rows[i].ID)
+		}
+	}
+	if found == nil {
+		t.Fatal("split txn not in listing")
+	}
+	if len(found.Splits) != 2 || found.Splits[0].Category != "Dining" {
+		t.Fatalf("splits not embedded: %+v", found.Splits)
+	}
+}
+
+func TestListTransactionsCategoryFilterIsSplitAware(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	id := seedSplitTxn(t, s, "filter-1", "-50.00")
+	dining, groceries := catID(t, s, "Dining"), catID(t, s, "Groceries")
+
+	// Parent categorized Dining, then split into Dining + Groceries.
+	if err := s.UpdateTransaction(ctx, id, TxnPatch{CategoryID: &dining}); err != nil {
+		t.Fatalf("categorize: %v", err)
+	}
+	if err := s.ReplaceSplits(ctx, id, []SplitInput{
+		{CategoryID: dining, Amount: "-30.00"},
+		{CategoryID: groceries, Amount: "-20.00"},
+	}); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	// Filter by a split part's category → parent row returned.
+	rows, err := s.ListTransactions(ctx, TxnFilter{View: "household", Month: "2026-07", CategoryID: &groceries})
+	if err != nil {
+		t.Fatalf("list groceries: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ID != id {
+		t.Fatalf("split-part filter should match parent, got %+v", rows)
+	}
+}
+
+func TestListTransactionsUnsplitStillMatchesOwnCategory(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	id := seedSplitTxn(t, s, "unsplit-1", "-25.00")
+	dining := catID(t, s, "Dining")
+	if err := s.UpdateTransaction(ctx, id, TxnPatch{CategoryID: &dining}); err != nil {
+		t.Fatalf("categorize: %v", err)
+	}
+	rows, err := s.ListTransactions(ctx, TxnFilter{View: "household", Month: "2026-07", CategoryID: &dining})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ID != id {
+		t.Fatalf("unsplit txn should match its own category, got %+v", rows)
+	}
+}
+
+func TestGetTransaction(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	id := seedSplitTxn(t, s, "get-1", "-50.00")
+	if err := s.ReplaceSplits(ctx, id, []SplitInput{
+		{CategoryID: catID(t, s, "Dining"), Amount: "-30.00"},
+		{CategoryID: catID(t, s, "Groceries"), Amount: "-20.00"},
+	}); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	txn, err := s.GetTransaction(ctx, id)
+	if err != nil {
+		t.Fatalf("GetTransaction: %v", err)
+	}
+	if txn.ID != id || txn.Amount != "-50.00" || len(txn.Splits) != 2 {
+		t.Fatalf("wrong txn: %+v", txn)
+	}
+
+	if _, err := s.GetTransaction(ctx, 999999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want ErrNotFound for missing id, got %v", err)
+	}
+}
+
 func TestSyncStatus(t *testing.T) {
 	s := testDB(t)
 	ctx := context.Background()
