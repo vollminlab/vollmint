@@ -334,17 +334,21 @@ func TestListTransactionsEmbedsSplits(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
+	// Unsplit sibling in the same household/2026-07 window, so the loop below
+	// actually exercises the "no splits" branch instead of it being dead code.
+	unsplitID := seedTxn(t, s, "acct-split-test", "scott", "embed-2", "2026-07-11", "-15.00", "unsplit sibling", nil)
 
 	rows, err := s.ListTransactions(ctx, TxnFilter{View: "household", Month: "2026-07"})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	var found *TxnRow
+	var found, foundUnsplit *TxnRow
 	for i := range rows {
-		if rows[i].ID == id {
+		switch rows[i].ID {
+		case id:
 			found = &rows[i]
-		} else if rows[i].Splits == nil {
-			t.Fatalf("unsplit txn %d has nil Splits — want empty slice", rows[i].ID)
+		case unsplitID:
+			foundUnsplit = &rows[i]
 		}
 	}
 	if found == nil {
@@ -352,6 +356,15 @@ func TestListTransactionsEmbedsSplits(t *testing.T) {
 	}
 	if len(found.Splits) != 2 || found.Splits[0].Category != "Dining" {
 		t.Fatalf("splits not embedded: %+v", found.Splits)
+	}
+	if foundUnsplit == nil {
+		t.Fatal("unsplit sibling txn not in listing")
+	}
+	if foundUnsplit.Splits == nil {
+		t.Fatalf("unsplit txn %d has nil Splits — want empty slice", unsplitID)
+	}
+	if len(foundUnsplit.Splits) != 0 {
+		t.Fatalf("unsplit txn %d has non-empty Splits: %+v", unsplitID, foundUnsplit.Splits)
 	}
 }
 
