@@ -34,6 +34,7 @@ func (s *Server) routes() {
 		_, _ = w.Write([]byte("ok"))
 	})
 	s.registerTransactions()
+	s.registerSplits()
 	s.registerSummary()
 	s.registerCategories()
 	s.registerRules()
