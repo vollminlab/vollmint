@@ -93,6 +93,31 @@ func TestForecastExcludesDeadAndP2P(t *testing.T) {
 	}
 }
 
+func TestForecastSameDayTiebreak(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// Qualifying cadence (Apr, May, Jun), but June has two charges on the
+	// same calendar day — DISTINCT ON must deterministically pick the
+	// later-inserted (higher id) row, not whichever the planner happens to
+	// return first.
+	seedBill(t, s, "acct-fc", "scott", "dc-apr", time.Date(2026, 4, 14, 0, 0, 0, 0, time.UTC), "-50.00", "DOUBLE CHARGE CO", "Utilities")
+	seedBill(t, s, "acct-fc", "scott", "dc-may", time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC), "-50.00", "DOUBLE CHARGE CO", "Utilities")
+	seedBill(t, s, "acct-fc", "scott", "dc-jun-a", time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC), "-50.00", "DOUBLE CHARGE CO", "Utilities")
+	seedBill(t, s, "acct-fc", "scott", "dc-jun-b", time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC), "-75.00", "DOUBLE CHARGE CO", "Utilities")
+
+	f, err := Forecast(ctx, s, "household", "2026-07")
+	if err != nil {
+		t.Fatalf("Forecast: %v", err)
+	}
+	if len(f.Bills) != 1 {
+		t.Fatalf("want 1 bill, got %d: %+v", len(f.Bills), f.Bills)
+	}
+	if f.Bills[0].ExpectedAmount != "75.00" {
+		t.Fatalf("expected amount %q, want 75.00 (higher-id, later-inserted same-day charge)", f.Bills[0].ExpectedAmount)
+	}
+}
+
 func TestForecastPaidMatching(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

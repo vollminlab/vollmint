@@ -46,7 +46,7 @@ func Forecast(ctx context.Context, s *store.Store, view, month string) (Forecast
 
 	rows, err := s.Pool.Query(ctx, `
 WITH spend AS (
-  SELECT t.payee, -t.amount AS mag, t.posted, t.pending,
+  SELECT t.id, t.payee, -t.amount AS mag, t.posted, t.pending,
          date_trunc('month', t.posted)::date AS m, t.category_id
   FROM transactions t
   JOIN accounts a ON a.id = t.account_id
@@ -75,7 +75,7 @@ med AS (
 ),
 latest AS (
   SELECT DISTINCT ON (payee) payee, mag AS expected
-  FROM hist ORDER BY payee, posted DESC
+  FROM hist ORDER BY payee, posted DESC, id DESC
 ),
 catmode AS (
   SELECT payee, mode() WITHIN GROUP (ORDER BY category_id) AS category_id
@@ -85,7 +85,7 @@ paid AS (
   SELECT DISTINCT ON (payee) payee, posted, mag
   FROM spend
   WHERE NOT pending AND posted >= $1::date AND posted < ($1::date + interval '1 month')
-  ORDER BY payee, posted ASC
+  ORDER BY payee, posted ASC, id ASC
 )
 SELECT cad.payee, cm.category_id, COALESCE(c.name, ''),
        COALESCE(md.pday, 1), COALESCE(lt.expected::text, '0'),
