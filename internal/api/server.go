@@ -36,6 +36,7 @@ func (s *Server) routes() {
 	s.registerTransactions()
 	s.registerSplits()
 	s.registerForecast()
+	s.registerInsights()
 	s.registerSummary()
 	s.registerCategories()
 	s.registerRules()
