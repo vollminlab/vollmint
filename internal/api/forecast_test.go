@@ -56,8 +56,13 @@ func TestGetForecast(t *testing.T) {
 	}
 	var resp struct {
 		Forecast struct {
-			Month             string `json:"month"`
-			Bills             []any  `json:"bills"`
+			Month string `json:"month"`
+			Bills []struct {
+				Payee          string `json:"payee"`
+				PredictedDay   int    `json:"predicted_day"`
+				ExpectedAmount string `json:"expected_amount"`
+				Paid           bool   `json:"paid"`
+			} `json:"bills"`
 			RemainingExpected string `json:"remaining_expected"`
 		} `json:"forecast"`
 	}
@@ -66,6 +71,22 @@ func TestGetForecast(t *testing.T) {
 	}
 	if resp.Forecast.Month != "2026-07" || len(resp.Forecast.Bills) != 1 {
 		t.Fatalf("bad envelope: %s", w.Body.String())
+	}
+	b := resp.Forecast.Bills[0]
+	if b.Payee != "VERIZON WIRELESS" {
+		t.Fatalf("payee %q, want VERIZON WIRELESS", b.Payee)
+	}
+	if b.ExpectedAmount != "120.00" {
+		t.Fatalf("expected amount %q, want 120.00", b.ExpectedAmount)
+	}
+	if b.PredictedDay != 14 {
+		t.Fatalf("predicted day %d, want 14", b.PredictedDay)
+	}
+	if b.Paid {
+		t.Fatal("bill should not be paid")
+	}
+	if resp.Forecast.RemainingExpected != "120.00" {
+		t.Fatalf("remaining %q, want 120.00", resp.Forecast.RemainingExpected)
 	}
 }
 
