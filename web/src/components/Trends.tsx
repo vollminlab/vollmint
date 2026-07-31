@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, Legend, Tooltip, XAxis, YAxis } from 'rec
 import type { View, TrendPoint } from '../api'
 import { getTrends } from '../api'
 import { money } from '../format'
+import { InsightCards } from './InsightCards'
 
 // Fixed-size chart: ResponsiveContainer renders nothing under jsdom (zero
 // width), and 1000px fits the app's 1100px container.
@@ -59,6 +60,7 @@ export function Trends({ view, month }: { view: View; month: string }) {
           <Bar dataKey="income" name="Income" fill="var(--good)" />
         </BarChart>
       )}
+      <InsightCards view={view} month={month} />
     </div>
   )
 }

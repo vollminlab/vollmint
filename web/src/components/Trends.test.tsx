@@ -24,7 +24,10 @@ describe('Trends', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<Trends view="scott" month="2026-07" />)
     await waitFor(() => expect(screen.getByText('Income')).toBeInTheDocument())
-    const url = fetchMock.mock.calls[0][0] as string
+    // Trends mounts InsightCards as a child, which fires its own fetch (to
+    // /api/insights) concurrently — find the trends call rather than assuming
+    // call order between sibling/child effects.
+    const url = fetchMock.mock.calls.map((c) => c[0] as string).find((u) => u.includes('/api/trends'))!
     expect(url).toContain('/api/trends')
     expect(url).toContain('view=scott')
     expect(url).toContain('month=2026-07')
