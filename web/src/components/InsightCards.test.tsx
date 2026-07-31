@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { InsightCards } from './InsightCards'
 import * as api from '../api'
 
@@ -38,7 +38,7 @@ describe('InsightCards', () => {
   it('renders nothing when there are no insights', async () => {
     vi.mocked(api.getInsights).mockResolvedValue({ insights: [] })
     const { container } = render(<InsightCards view="household" month="2026-07" />)
-    await vi.waitFor(() => expect(api.getInsights).toHaveBeenCalled())
+    await waitFor(() => expect(api.getInsights).toHaveBeenCalled())
     expect(container).toBeEmptyDOMElement()
   })
 })

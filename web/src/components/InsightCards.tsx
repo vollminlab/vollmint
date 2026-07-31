@@ -15,6 +15,7 @@ export function InsightCards({ view, month }: { view: View; month: string }) {
 
   useEffect(() => {
     let live = true
+    setItems([])
     getInsights(view, month)
       .then((d) => live && setItems(d.insights ?? []))
       .catch(() => {})
