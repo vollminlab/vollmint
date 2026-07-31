@@ -50,10 +50,13 @@ export function titleCase(s: string): string {
     .join(' ')
 }
 
-/** "2026-07" + 14 → "Jul 14" (caller prefixes "~" for predictions) */
+/** "2026-07" + 14 → "Jul 14" (caller prefixes "~" for predictions; day is
+ * clamped to the month's length so a day-31 bill never renders as "Feb 31") */
 export function monthDayLabel(month: string, day: number): string {
+  const y = Number(month.slice(0, 4))
   const m = Number(month.slice(5, 7))
-  return `${SHORT_MONTHS[m - 1]} ${day}`
+  const last = new Date(y, m, 0).getDate()
+  return `${SHORT_MONTHS[m - 1]} ${Math.min(day, last)}`
 }
 
 /** "2026-07-13" → "Jul 13" */

@@ -150,7 +150,7 @@ export function Transactions({ view, month }: { view: View; month: string }) {
                       <td colSpan={6}>
                         <SplitEditor
                           txn={t}
-                          cats={cats}
+                          cats={cats.filter((c) => c.kind === 'spend' || c.kind === 'savings')}
                           onSaved={() => {
                             setEditing(null)
                             load()

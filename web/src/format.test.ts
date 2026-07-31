@@ -39,6 +39,12 @@ describe('monthDayLabel', () => {
   it('formats a month + day', () => {
     expect(monthDayLabel('2026-07', 14)).toBe('Jul 14')
   })
+
+  it('clamps the day to the month length', () => {
+    expect(monthDayLabel('2026-02', 30)).toBe('Feb 28')
+    expect(monthDayLabel('2028-02', 30)).toBe('Feb 29')
+    expect(monthDayLabel('2026-06', 31)).toBe('Jun 30')
+  })
 })
 
 describe('dateLabel', () => {
