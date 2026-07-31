@@ -141,3 +141,152 @@ func TestInsightSubscriptions(t *testing.T) {
 		t.Fatalf("overlap card: %+v", ovl)
 	}
 }
+
+// TestInsightSubscriptionsSameDayTiebreak mirrors
+// TestForecastSameDayTiebreak (forecast_test.go): a payee with a qualifying
+// cadence whose latest month has two same-day charges with different
+// amounts. The `ranked` CTE's row_number() must deterministically pick the
+// higher-id (later-inserted) row as "latest" — without the `id DESC`
+// tiebreak, ties on posted date are resolved arbitrarily by the planner and
+// the price-increase amount would flap between runs.
+func TestInsightSubscriptionsSameDayTiebreak(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	seedBill(t, s, "acct-tie", "scott", "dc-apr", time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC), "-20.00", "DOUBLE CHARGE SUB", "Subscriptions")
+	seedBill(t, s, "acct-tie", "scott", "dc-may", time.Date(2026, 5, 15, 0, 0, 0, 0, time.UTC), "-20.00", "DOUBLE CHARGE SUB", "Subscriptions")
+	// Same calendar day, two charges — dc-jun-a inserted first (lower id),
+	// dc-jun-b inserted second (higher id). rn=1 must be dc-jun-b.
+	seedBill(t, s, "acct-tie", "scott", "dc-jun-a", time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC), "-20.00", "DOUBLE CHARGE SUB", "Subscriptions")
+	seedBill(t, s, "acct-tie", "scott", "dc-jun-b", time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC), "-30.00", "DOUBLE CHARGE SUB", "Subscriptions")
+
+	items, err := InsightSubscriptions(ctx, s, "household", "2026-07")
+	if err != nil {
+		t.Fatalf("subs: %v", err)
+	}
+	byType := map[string]Insight{}
+	for _, in := range items {
+		byType[in.Type] = in
+	}
+
+	total, ok := byType["subscription_total"]
+	if !ok {
+		t.Fatalf("missing subscription_total: %+v", items)
+	}
+	if !strings.Contains(total.Body, "$30.00/month") {
+		t.Fatalf("total must reflect higher-id (later-inserted) same-day charge ($30.00): %q", total.Body)
+	}
+
+	inc, ok := byType["price_increase"]
+	if !ok {
+		t.Fatalf("missing price_increase: %+v", items)
+	}
+	if !strings.Contains(inc.Body, "$20.00") || !strings.Contains(inc.Body, "$30.00") ||
+		!strings.Contains(inc.Body, "+$10.00") {
+		t.Fatalf("increase card must compare rn=2 ($20.00, dc-jun-a) to rn=1 ($30.00, dc-jun-b): %q", inc.Body)
+	}
+	if inc.Amount != "10.00" {
+		t.Fatalf("increase amount %q, want 10.00 (deterministic higher-id tiebreak)", inc.Amount)
+	}
+}
+
+// TestInsightSubscriptionOverlapExcludesMaxFalsePositive guards against the
+// bare "max" keyword matching non-streaming payees like "MAX FITNESS" (or
+// "TJ MAXX", "AUTOZONE MAX", etc.) via substring match. The streaming group
+// must only match on specific HBO Max tokens.
+func TestInsightSubscriptionOverlapExcludesMaxFalsePositive(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	seedBill(t, s, "acct-max", "scott", "nx-apr", time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC), "-15.99", "NETFLIX", "Subscriptions")
+	seedBill(t, s, "acct-max", "scott", "nx-may", time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC), "-15.99", "NETFLIX", "Subscriptions")
+	seedBill(t, s, "acct-max", "scott", "nx-jun", time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC), "-15.99", "NETFLIX", "Subscriptions")
+
+	seedBill(t, s, "acct-max", "scott", "hl-apr", time.Date(2026, 4, 22, 0, 0, 0, 0, time.UTC), "-15.49", "HULU", "Subscriptions")
+	seedBill(t, s, "acct-max", "scott", "hl-may", time.Date(2026, 5, 22, 0, 0, 0, 0, time.UTC), "-15.49", "HULU", "Subscriptions")
+	seedBill(t, s, "acct-max", "scott", "hl-jun", time.Date(2026, 6, 22, 0, 0, 0, 0, time.UTC), "-15.49", "HULU", "Subscriptions")
+
+	// Recurring, stable-priced gym membership that must NOT be swept into
+	// the "streaming" overlap group by a bare "max" substring match.
+	seedBill(t, s, "acct-max", "scott", "mf-apr", time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC), "-40.00", "MAX FITNESS", "Subscriptions")
+	seedBill(t, s, "acct-max", "scott", "mf-may", time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC), "-40.00", "MAX FITNESS", "Subscriptions")
+	seedBill(t, s, "acct-max", "scott", "mf-jun", time.Date(2026, 6, 25, 0, 0, 0, 0, time.UTC), "-40.00", "MAX FITNESS", "Subscriptions")
+
+	items, err := InsightSubscriptions(ctx, s, "household", "2026-07")
+	if err != nil {
+		t.Fatalf("subs: %v", err)
+	}
+	var ovl *Insight
+	for i, in := range items {
+		if in.Type == "subscription_overlap" {
+			ovl = &items[i]
+		}
+	}
+	if ovl == nil {
+		t.Fatalf("missing subscription_overlap: %+v", items)
+	}
+	if ovl.Title != "Overlapping streaming subscriptions" ||
+		!strings.Contains(ovl.Body, "2 streaming services") ||
+		!strings.Contains(ovl.Body, "Netflix") || !strings.Contains(ovl.Body, "Hulu") {
+		t.Fatalf("overlap card: %+v", ovl)
+	}
+	if strings.Contains(ovl.Body, "Max Fitness") {
+		t.Fatalf("Max Fitness must not be swept into streaming overlap: %q", ovl.Body)
+	}
+}
+
+// TestInsightCategorySpikeZeroBaselineGuard ensures a category with no
+// spend in the prior 3 months (avg3 == 0) does not trivially satisfy the
+// "spent >= 1.25x average" gate on its first-ever month of spend.
+func TestInsightCategorySpikeZeroBaselineGuard(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// Health has zero spend history — this is its first-ever charge, well
+	// above the $50 floor, but there is no baseline to compare against.
+	seedSpend(t, s, "acct-zero", "scott", "h-jul", "2026-07-05", "-75.00", "Health")
+
+	now := time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC)
+	items, err := InsightCategorySpikes(ctx, s, "household", "2026-07", now)
+	if err != nil {
+		t.Fatalf("spikes: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("zero-baseline category must not spike: %+v", items)
+	}
+}
+
+// TestInsightsCombinerSmoke is a light smoke test for the Insights
+// combiner: it merges both generators and sorts by money at stake.
+func TestInsightsCombinerSmoke(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// Dining category spike — delta $100.
+	seedSpend(t, s, "acct-comb", "scott", "dc-apr", "2026-04-10", "-100.00", "Dining")
+	seedSpend(t, s, "acct-comb", "scott", "dc-may", "2026-05-10", "-100.00", "Dining")
+	seedSpend(t, s, "acct-comb", "scott", "dc-jun", "2026-06-10", "-100.00", "Dining")
+	seedSpend(t, s, "acct-comb", "scott", "dc-jul", "2026-07-10", "-200.00", "Dining")
+
+	// Netflix price increase — $2.50, much smaller money at stake.
+	seedBill(t, s, "acct-comb", "scott", "nx-apr", time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC), "-15.49", "NETFLIX", "Subscriptions")
+	seedBill(t, s, "acct-comb", "scott", "nx-may", time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC), "-15.49", "NETFLIX", "Subscriptions")
+	seedBill(t, s, "acct-comb", "scott", "nx-jun", time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC), "-17.99", "NETFLIX", "Subscriptions")
+
+	now := time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC)
+	items, err := Insights(ctx, s, "household", "2026-07", now)
+	if err != nil {
+		t.Fatalf("Insights: %v", err)
+	}
+	if len(items) < 2 {
+		t.Fatalf("want at least 2 combined insights, got %+v", items)
+	}
+	for i := 1; i < len(items); i++ {
+		if cents(items[i-1].Amount) < cents(items[i].Amount) {
+			t.Fatalf("not sorted descending by amount: %+v", items)
+		}
+	}
+	if items[0].Type != "category_spike" {
+		t.Fatalf("want the $100 Dining spike to outrank smaller-dollar cards, got %+v", items[0])
+	}
+}

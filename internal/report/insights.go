@@ -85,7 +85,7 @@ ORDER BY c.name`, full...)
 				continue
 			}
 		}
-		if 4*spentC >= 5*avgC && spentC-avgC >= 5000 {
+		if avgC > 0 && 4*spentC >= 5*avgC && spentC-avgC >= 5000 {
 			delta := spentC - avgC
 			cards = append(cards, carded{Insight{
 				Type:  "category_spike",
@@ -114,7 +114,7 @@ var overlapGroups = []struct {
 	display string
 	keys    []string
 }{
-	{"streaming", []string{"netflix", "hulu", "disney", "max", "paramount", "peacock", "youtube premium", "apple tv"}},
+	{"streaming", []string{"netflix", "hulu", "disney", "hbo max", "hbomax", "max.com", "paramount", "peacock", "youtube premium", "apple tv"}},
 	{"music", []string{"spotify", "apple music", "tidal", "pandora"}},
 	{"cloud storage", []string{"dropbox", "google one", "icloud", "onedrive"}},
 	{"AI", []string{"anthropic", "claude.ai", "openai", "chatgpt"}},
@@ -126,31 +126,10 @@ func InsightSubscriptions(ctx context.Context, s *store.Store, view, month strin
 	own, args := ownerFilter(view, 2)
 	full := append([]any{month + "-01"}, args...)
 
-	rows, err := s.Pool.Query(ctx, `
-WITH spend AS (
-  SELECT t.payee, -t.amount AS mag, t.posted, t.pending,
-         date_trunc('month', t.posted)::date AS m, t.category_id
-  FROM transactions t
-  JOIN accounts a ON a.id = t.account_id
-  LEFT JOIN categories c ON c.id = t.category_id
-  WHERE t.amount < 0 AND t.payee <> ''
-    AND t.transfer_peer_id IS NULL
-    AND (c.kind IS NULL OR c.kind <> 'transfer')
-    AND t.payee NOT ILIKE '%venmo%' AND t.payee NOT ILIKE '%zelle%'`+own+`
-),
-hist AS (
-  SELECT * FROM spend
-  WHERE NOT pending AND posted < ($1::date + interval '1 month')
-),
-cadence AS (
-  SELECT payee FROM hist GROUP BY payee
-  HAVING count(DISTINCT m) >= 3
-     AND count(DISTINCT m) FILTER (
-           WHERE m >= ($1::date - interval '3 months') AND m < $1::date) >= 2
-),
+	rows, err := s.Pool.Query(ctx, cadenceCTEHead+own+cadenceCTETail+`,
 ranked AS (
   SELECT payee, mag, posted,
-         row_number() OVER (PARTITION BY payee ORDER BY posted DESC) AS rn
+         row_number() OVER (PARTITION BY payee ORDER BY posted DESC, id DESC) AS rn
   FROM hist
 ),
 stats AS (

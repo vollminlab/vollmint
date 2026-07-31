@@ -25,6 +25,46 @@ func ownerFilter(view string, argN int) (string, []any) {
 const notTransfer = ` AND t.transfer_peer_id IS NULL
 	AND (c.kind IS NULL OR c.kind <> 'transfer')`
 
+// cadenceCTEHead opens the shared "spend" CTE used by both Forecast and the
+// subscription insights: non-transfer, non-P2P (Venmo/Zelle excluded)
+// payee-grouped spend joined to accounts. It selects t.id so callers can
+// build deterministic same-day tiebreaks (ORDER BY posted DESC, id DESC) —
+// without it, ties on posted date are resolved arbitrarily by the planner.
+// A caller must concatenate an ownerFilter fragment immediately after this
+// constant, then close out with cadenceCTETail. Example:
+//
+//	own, args := ownerFilter(view, 2)
+//	q := cadenceCTEHead + own + cadenceCTETail + `, ... rest of query`
+const cadenceCTEHead = `
+WITH spend AS (
+  SELECT t.id, t.payee, -t.amount AS mag, t.posted, t.pending,
+         date_trunc('month', t.posted)::date AS m, t.category_id
+  FROM transactions t
+  JOIN accounts a ON a.id = t.account_id
+  LEFT JOIN categories c ON c.id = t.category_id
+  WHERE t.amount < 0 AND t.payee <> ''
+    AND t.transfer_peer_id IS NULL
+    AND (c.kind IS NULL OR c.kind <> 'transfer')
+    AND t.payee NOT ILIKE '%venmo%' AND t.payee NOT ILIKE '%zelle%'`
+
+// cadenceCTETail closes the "spend" CTE opened by cadenceCTEHead and adds
+// the shared "hist" (non-pending, posted before the target month) and
+// "cadence" (>=3 distinct months overall AND >=2 of the last 3 months —
+// the recent-cadence gate that excludes payees that have gone dead) CTEs.
+// Callers append further CTEs/SELECT referencing spend/hist/cadence.
+const cadenceCTETail = `
+),
+hist AS (
+  SELECT * FROM spend
+  WHERE NOT pending AND posted < ($1::date + interval '1 month')
+),
+cadence AS (
+  SELECT payee FROM hist GROUP BY payee
+  HAVING count(DISTINCT m) >= 3
+     AND count(DISTINCT m) FILTER (
+           WHERE m >= ($1::date - interval '3 months') AND m < $1::date) >= 2
+)`
+
 // SummaryResult is the dashboard rollup. All amounts are decimal strings.
 type SummaryResult struct {
 	In          string `json:"in"`
