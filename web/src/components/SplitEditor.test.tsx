@@ -89,4 +89,45 @@ describe('SplitEditor', () => {
       { category_id: 2, amount: '-20.00', note: '' },
     ])
   })
+
+  it('pre-fills draft rows from an already-split txn and enables Save immediately', () => {
+    const splitTxn: Txn = {
+      ...txn,
+      splits: [
+        { id: 1, category_id: 1, category: 'Dining', amount: '-30.00', note: '' },
+        { id: 2, category_id: 2, category: 'Groceries', amount: '-20.00', note: 'tickets' },
+      ],
+    }
+    render(<SplitEditor txn={splitTxn} cats={cats} onSaved={() => {}} onCancel={() => {}} />)
+
+    const catSelects = screen.getAllByLabelText(/category for part/) as HTMLSelectElement[]
+    const amounts = screen.getAllByLabelText(/amount for part/) as HTMLInputElement[]
+    const notes = screen.getAllByLabelText(/note for part/) as HTMLInputElement[]
+
+    expect(catSelects[0].value).toBe('1')
+    expect(amounts[0].value).toBe('30.00')
+    expect(notes[0].value).toBe('')
+
+    expect(catSelects[1].value).toBe('2')
+    expect(amounts[1].value).toBe('20.00')
+    expect(notes[1].value).toBe('tickets')
+
+    // Sum already matches the parent amount and every part has a category,
+    // so Save should be enabled without any further edits.
+    expect(screen.getByText(/remaining: \$0\.00/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
+    expect(screen.queryByText(/assign a category to every part/i)).not.toBeInTheDocument()
+  })
+
+  it('shows a hint instead of the good color when remainder is zero but a category is missing', () => {
+    render(<SplitEditor txn={txn} cats={cats} onSaved={() => {}} onCancel={() => {}} />)
+    const amounts = screen.getAllByLabelText(/amount for part/)
+    // Fill both amounts so remainder hits zero, but leave row 2's category unset.
+    fireEvent.change(amounts[0], { target: { value: '30.00' } })
+    fireEvent.change(amounts[1], { target: { value: '20.00' } })
+
+    expect(screen.getByText(/remaining: \$0\.00/i)).toBeInTheDocument()
+    expect(screen.getByText(/assign a category to every part/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+  })
 })

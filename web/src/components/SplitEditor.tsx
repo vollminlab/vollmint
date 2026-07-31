@@ -59,6 +59,7 @@ export function SplitEditor({
   const remainder = parentCents - validSum
   const allValid = drafts.every((d, i) => d.category_id !== '' && partCents[i] !== null && partCents[i]! > 0)
   const canSave = remainder === 0 && allValid && !saving
+  const remainderColor = remainder !== 0 ? 'var(--danger)' : allValid ? 'var(--good)' : 'var(--muted)'
 
   const update = (i: number, patch: Partial<Draft>) =>
     setDrafts(drafts.map((d, j) => (j === i ? { ...d, ...patch } : d)))
@@ -120,9 +121,12 @@ export function SplitEditor({
         <button type="button" onClick={() => setDrafts([...drafts, { category_id: '', amount: '', note: '' }])}>
           + Add part
         </button>
-        <span style={{ color: remainder === 0 ? 'var(--good)' : 'var(--danger)' }}>
+        <span style={{ color: remainderColor }}>
           Remaining: {fromCents(remainder).startsWith('-') ? '-$' + fromCents(remainder).slice(1) : '$' + fromCents(remainder)}
         </span>
+        {remainder === 0 && !allValid && (
+          <span style={{ color: 'var(--muted)' }}>assign a category to every part</span>
+        )}
         <button type="button" onClick={save} disabled={!canSave}>
           Save
         </button>
