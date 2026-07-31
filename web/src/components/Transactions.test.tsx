@@ -75,6 +75,71 @@ describe('Transactions drill-down plumbing', () => {
   })
 })
 
+describe('Transactions splits', () => {
+  it('shows a split badge with part names instead of the category select', async () => {
+    const splitTxns = {
+      transactions: [
+        {
+          id: 9, source: 'simplefin', account_id: 'ally-s', account_name: 'Ally',
+          posted: '2026-07-06', amount: '-50.00', description: 'VENMO PAYMENT', payee: 'VENMO',
+          pending: false, category_id: 1, category_name: 'Dining',
+          owner_override: null, effective_owner: 'scott', transfer_peer_id: null,
+          splits: [
+            { id: 1, category_id: 1, category: 'Dining', amount: '-30.00', note: '' },
+            { id: 2, category_id: 2, category: 'Groceries', amount: '-20.00', note: '' },
+          ],
+        },
+      ],
+    }
+    const fetchMock = vi.fn((url: string) => {
+      const body = url.startsWith('/api/categories') ? cats : splitTxns
+      return Promise.resolve({ ok: true, json: async () => body })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <MemoryRouter initialEntries={['/transactions?view=scott&month=2026-07']}>
+        <Transactions view="scott" month="2026-07" />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('Split · Dining + Groceries')).toBeInTheDocument()
+    expect(screen.queryByLabelText('category for VENMO')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /unsplit/i })).toBeInTheDocument()
+  })
+
+  it('hides the Split action for pending and transfer rows', async () => {
+    const rowsBody = {
+      transactions: [
+        {
+          id: 10, source: 'simplefin', account_id: 'ally-s', account_name: 'Ally',
+          posted: '2026-07-07', amount: '-10.00', description: 'PENDING CHARGE', payee: 'PENDING CHARGE',
+          pending: true, category_id: 2, category_name: 'Groceries',
+          owner_override: null, effective_owner: 'scott', transfer_peer_id: null,
+          splits: [],
+        },
+        {
+          id: 11, source: 'simplefin', account_id: 'ally-s', account_name: 'Ally',
+          posted: '2026-07-08', amount: '-25.00', description: 'TRANSFER OUT', payee: 'TRANSFER OUT',
+          pending: false, category_id: 2, category_name: 'Groceries',
+          owner_override: null, effective_owner: 'scott', transfer_peer_id: 99,
+          splits: [],
+        },
+      ],
+    }
+    const fetchMock = vi.fn((url: string) => {
+      const body = url.startsWith('/api/categories') ? cats : rowsBody
+      return Promise.resolve({ ok: true, json: async () => body })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <MemoryRouter initialEntries={['/transactions?view=scott&month=2026-07']}>
+        <Transactions view="scott" month="2026-07" />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('PENDING CHARGE')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /^split$/i })).not.toBeInTheDocument()
+  })
+})
+
 describe('Transactions q search filter', () => {
   it('reads q from the URL and passes it to the API', async () => {
     const fetchMock = stubFetch()
