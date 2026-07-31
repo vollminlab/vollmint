@@ -40,6 +40,46 @@ export interface Txn {
   owner_override: string | null
   effective_owner: string
   transfer_peer_id: number | null
+  splits: Split[]
+}
+
+export interface Split {
+  id: number
+  category_id: number
+  category: string
+  amount: string
+  note: string
+}
+
+export interface SplitInput {
+  category_id: number
+  amount: string
+  note: string
+}
+
+export interface ForecastBill {
+  payee: string
+  category_id: number | null
+  category: string
+  predicted_day: number
+  expected_amount: string
+  paid: boolean
+  paid_date: string
+  paid_amount: string
+}
+
+export interface Forecast {
+  month: string
+  view: string
+  bills: ForecastBill[]
+  remaining_expected: string
+}
+
+export interface Insight {
+  type: string
+  title: string
+  body: string
+  amount: string
 }
 
 export interface Category {
@@ -197,4 +237,20 @@ export function uploadVenmo(file: File): Promise<{ upserted: number; categorized
 
 export function getSyncStatus(): Promise<{ runs: SyncRun[] }> {
   return req('/api/sync/status')
+}
+
+export function putSplits(id: number, splits: SplitInput[]): Promise<{ transaction: Txn }> {
+  return req(`/api/transactions/${id}/splits`, jsonInit('PUT', { splits }))
+}
+
+export function deleteSplits(id: number): Promise<{ status: string }> {
+  return req(`/api/transactions/${id}/splits`, { method: 'DELETE' })
+}
+
+export function getForecast(view: View, month: string): Promise<{ forecast: Forecast }> {
+  return req(`/api/forecast${buildQuery({ view, month })}`)
+}
+
+export function getInsights(view: View, month: string): Promise<{ insights: Insight[] }> {
+  return req(`/api/insights${buildQuery({ view, month })}`)
 }

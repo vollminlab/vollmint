@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getSummary, getTransactions, patchTransaction, buildQuery } from './api'
+import {
+  getSummary,
+  getTransactions,
+  patchTransaction,
+  buildQuery,
+  putSplits,
+  deleteSplits,
+  getForecast,
+  getInsights,
+} from './api'
 
 describe('buildQuery', () => {
   it('omits empty params and encodes present ones', () => {
@@ -51,5 +60,50 @@ describe('api client', () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: 'boom' }) })
     vi.stubGlobal('fetch', fetchMock)
     await expect(getSummary('household', '2026-07')).rejects.toThrow('boom')
+  })
+
+  it('putSplits PUTs the splits array and unwraps the envelope', async () => {
+    const txn = { id: 7 }
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ transaction: txn }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await putSplits(7, [
+      { category_id: 2, amount: '-30.00', note: '' },
+      { category_id: 3, amount: '-20.00', note: 'tickets' },
+    ])
+    expect(fetchMock).toHaveBeenCalledWith('/api/transactions/7/splits', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        splits: [
+          { category_id: 2, amount: '-30.00', note: '' },
+          { category_id: 3, amount: '-20.00', note: 'tickets' },
+        ],
+      }),
+    })
+    expect(res.transaction).toEqual(txn)
+  })
+
+  it('deleteSplits DELETEs the splits resource', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'ok' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    await deleteSplits(7)
+    expect(fetchMock).toHaveBeenCalledWith('/api/transactions/7/splits', { method: 'DELETE' })
+  })
+
+  it('getForecast requests view and month', async () => {
+    const payload = { forecast: { month: '2026-07', view: 'household', bills: [], remaining_expected: '0' } }
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload })
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await getForecast('household', '2026-07')
+    expect(fetchMock).toHaveBeenCalledWith('/api/forecast?view=household&month=2026-07')
+    expect(res.forecast.bills).toEqual([])
+  })
+
+  it('getInsights requests view and month', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ insights: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await getInsights('scott', '2026-06')
+    expect(fetchMock).toHaveBeenCalledWith('/api/insights?view=scott&month=2026-06')
+    expect(res.insights).toEqual([])
   })
 })

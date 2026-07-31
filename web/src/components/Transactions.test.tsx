@@ -10,6 +10,7 @@ const txns = {
       posted: '2026-07-05', amount: '-100.00', description: 'WHOLE FOODS', payee: 'WHOLE FOODS',
       pending: false, category_id: 2, category_name: 'Groceries',
       owner_override: null, effective_owner: 'scott', transfer_peer_id: null,
+      splits: [],
     },
   ],
 }
