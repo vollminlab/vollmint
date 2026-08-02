@@ -39,3 +39,28 @@ export function currentMonth(): string {
   const d = new Date()
   return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`
 }
+
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+export function titleCase(s: string): string {
+  return s
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ')
+}
+
+/** "2026-07" + 14 → "Jul 14" (caller prefixes "~" for predictions; day is
+ * clamped to the month's length so a day-31 bill never renders as "Feb 31") */
+export function monthDayLabel(month: string, day: number): string {
+  const y = Number(month.slice(0, 4))
+  const m = Number(month.slice(5, 7))
+  const last = new Date(y, m, 0).getDate()
+  return `${SHORT_MONTHS[m - 1]} ${Math.min(day, last)}`
+}
+
+/** "2026-07-13" → "Jul 13" */
+export function dateLabel(iso: string): string {
+  const m = Number(iso.slice(5, 7))
+  return `${SHORT_MONTHS[m - 1]} ${Number(iso.slice(8, 10))}`
+}

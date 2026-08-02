@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { View, Txn, Category } from '../api'
-import { getTransactions, getCategories, patchTransaction } from '../api'
+import { getTransactions, getCategories, patchTransaction, deleteSplits } from '../api'
 import { money } from '../format'
+import { SplitEditor } from './SplitEditor'
 
 export function Transactions({ view, month }: { view: View; month: string }) {
   const [params] = useSearchParams()
@@ -14,6 +15,7 @@ export function Transactions({ view, month }: { view: View; month: string }) {
   const [cats, setCats] = useState<Category[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState<number | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -69,38 +71,101 @@ export function Transactions({ view, month }: { view: View; month: string }) {
               <th>Account</th>
               <th style={{ textAlign: 'right' }}>Amount</th>
               <th>Category</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((t) => (
-              <tr key={t.id}>
-                <td>{t.posted}</td>
-                <td>{t.payee || t.description}</td>
-                <td>{t.account_name}</td>
-                <td style={{ textAlign: 'right', color: t.amount.startsWith('-') ? 'var(--text)' : 'var(--good)' }}>
-                  {money(t.amount)}
-                </td>
-                <td>
-                  <select
-                    value={t.category_id ?? ''}
-                    onChange={(e) => recategorize(t.id, Number(e.target.value))}
-                    aria-label={`category for ${t.payee || t.description}`}
-                  >
-                    <option value="" disabled>
-                      — uncategorized —
-                    </option>
-                    {cats.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-              </tr>
-            ))}
+            {rows.map((t) => {
+              const canSplit = !t.pending && t.transfer_peer_id === null
+              const isSplit = t.splits.length > 0
+              return (
+                <Fragment key={t.id}>
+                  <tr>
+                    <td>{t.posted}</td>
+                    <td>{t.payee || t.description}</td>
+                    <td>{t.account_name}</td>
+                    <td
+                      style={{ textAlign: 'right', color: t.amount.startsWith('-') ? 'var(--text)' : 'var(--good)' }}
+                    >
+                      {money(t.amount)}
+                    </td>
+                    <td>
+                      {isSplit ? (
+                        <div>
+                          <span>
+                            {t.splits.length === 2
+                              ? 'Split · ' + t.splits.map((sp) => sp.category).join(' + ')
+                              : `Split (${t.splits.length})`}
+                          </span>
+                          {t.splits.map((sp) => (
+                            <div key={sp.id} style={{ color: 'var(--muted)', fontSize: '0.85em' }}>
+                              {sp.category}: {money(sp.amount)}
+                              {sp.note ? ` — ${sp.note}` : ''}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <select
+                          value={t.category_id ?? ''}
+                          onChange={(e) => recategorize(t.id, Number(e.target.value))}
+                          aria-label={`category for ${t.payee || t.description}`}
+                        >
+                          <option value="" disabled>
+                            — uncategorized —
+                          </option>
+                          {cats.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                    <td>
+                      {canSplit && (
+                        <button type="button" onClick={() => setEditing(editing === t.id ? null : t.id)}>
+                          Split
+                        </button>
+                      )}
+                      {isSplit && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await deleteSplits(t.id)
+                            } catch (e) {
+                              setErr((e as Error).message)
+                            } finally {
+                              load()
+                            }
+                          }}
+                        >
+                          Unsplit
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {editing === t.id && (
+                    <tr>
+                      <td colSpan={6}>
+                        <SplitEditor
+                          txn={t}
+                          cats={cats.filter((c) => c.kind === 'spend' || c.kind === 'savings')}
+                          onSaved={() => {
+                            setEditing(null)
+                            load()
+                          }}
+                          onCancel={() => setEditing(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ color: 'var(--muted)' }}>
+                <td colSpan={6} style={{ color: 'var(--muted)' }}>
                   No transactions.
                 </td>
               </tr>

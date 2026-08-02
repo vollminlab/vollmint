@@ -3,6 +3,7 @@ import type { View, SummaryResponse } from '../api'
 import { getSummary } from '../api'
 import { SummaryCards } from './SummaryCards'
 import { CategoryBars } from './CategoryBars'
+import { UpcomingBills } from './UpcomingBills'
 
 export function Dashboard({ view, month }: { view: View; month: string }) {
   const [data, setData] = useState<SummaryResponse | null>(null)
@@ -30,6 +31,7 @@ export function Dashboard({ view, month }: { view: View; month: string }) {
         <h2 style={{ fontSize: '1rem' }}>Spending by category</h2>
         <CategoryBars categories={data.categories} view={view} month={month} />
       </section>
+      <UpcomingBills view={view} month={month} />
     </div>
   )
 }

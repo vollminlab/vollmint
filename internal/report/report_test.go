@@ -3,6 +3,8 @@ package report
 import (
 	"context"
 	"testing"
+
+	"github.com/vollminlab/vollmint/internal/store"
 )
 
 func TestSummaryTotals(t *testing.T) {
@@ -239,5 +241,84 @@ func TestMonthlyFlowViewFilter(t *testing.T) {
 	}
 	if rows[0] != (MonthFlow{Month: "2026-07", In: "0", Out: "50.00"}) {
 		t.Errorf("row = %+v, want scott-only 50.00", rows[0])
+	}
+}
+
+func TestSpendByCategorySplitAware(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// One -50.00 Dining transaction, split -30 Dining / -20 Groceries.
+	seedSpend(t, s, "acct-split", "scott", "split-rpt-1", "2026-07-10", "-50.00", "Dining")
+
+	var id int64
+	if err := s.Pool.QueryRow(ctx,
+		`SELECT id FROM transactions WHERE external_id='split-rpt-1'`).Scan(&id); err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	var dining, groceries int
+	if err := s.Pool.QueryRow(ctx, `SELECT id FROM categories WHERE name='Dining'`).Scan(&dining); err != nil {
+		t.Fatalf("dining: %v", err)
+	}
+	if err := s.Pool.QueryRow(ctx, `SELECT id FROM categories WHERE name='Groceries'`).Scan(&groceries); err != nil {
+		t.Fatalf("groceries: %v", err)
+	}
+	if err := s.ReplaceSplits(ctx, id, []store.SplitInput{
+		{CategoryID: dining, Amount: "-30.00"},
+		{CategoryID: groceries, Amount: "-20.00"},
+	}); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	rows, err := SpendByCategory(ctx, s, "household", "2026-07")
+	if err != nil {
+		t.Fatalf("SpendByCategory: %v", err)
+	}
+	got := map[string]string{}
+	for _, r := range rows {
+		got[r.Category] = r.Spent
+	}
+	if got["Dining"] != "30.00" {
+		t.Fatalf("Dining = %q, want 30.00 (split part, not parent 50.00)", got["Dining"])
+	}
+	if got["Groceries"] != "20.00" {
+		t.Fatalf("Groceries = %q, want 20.00", got["Groceries"])
+	}
+}
+
+func TestSummaryVicesSplitAware(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// -50.00 categorized Dining (a vice). Split: -30 Dining (vice) / -20 Groceries (not).
+	seedSpend(t, s, "acct-vice", "scott", "vice-1", "2026-07-12", "-50.00", "Dining")
+	var id int64
+	if err := s.Pool.QueryRow(ctx,
+		`SELECT id FROM transactions WHERE external_id='vice-1'`).Scan(&id); err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	var dining, groceries int
+	if err := s.Pool.QueryRow(ctx, `SELECT id FROM categories WHERE name='Dining'`).Scan(&dining); err != nil {
+		t.Fatalf("dining: %v", err)
+	}
+	if err := s.Pool.QueryRow(ctx, `SELECT id FROM categories WHERE name='Groceries'`).Scan(&groceries); err != nil {
+		t.Fatalf("groceries: %v", err)
+	}
+	if err := s.ReplaceSplits(ctx, id, []store.SplitInput{
+		{CategoryID: dining, Amount: "-30.00"},
+		{CategoryID: groceries, Amount: "-20.00"},
+	}); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	sum, err := Summary(ctx, s, "household", "2026-07")
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if sum.Out != "50.00" {
+		t.Fatalf("Out = %q, want 50.00 — split must not change totals", sum.Out)
+	}
+	if sum.Vices != "30.00" {
+		t.Fatalf("Vices = %q, want 30.00 — only the Dining part is a vice", sum.Vices)
 	}
 }

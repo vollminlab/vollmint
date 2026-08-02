@@ -10,6 +10,7 @@ const txns = {
       posted: '2026-07-05', amount: '-100.00', description: 'WHOLE FOODS', payee: 'WHOLE FOODS',
       pending: false, category_id: 2, category_name: 'Groceries',
       owner_override: null, effective_owner: 'scott', transfer_peer_id: null,
+      splits: [],
     },
   ],
 }
@@ -71,6 +72,128 @@ describe('Transactions drill-down plumbing', () => {
     const select = screen.getByLabelText('category for WHOLE FOODS')
     fireEvent.change(select, { target: { value: '2' } })
     await waitFor(() => expect(screen.getByText(/Error:/)).toBeInTheDocument())
+  })
+})
+
+describe('Transactions splits', () => {
+  it('shows a split badge with part names instead of the category select', async () => {
+    const splitTxns = {
+      transactions: [
+        {
+          id: 9, source: 'simplefin', account_id: 'ally-s', account_name: 'Ally',
+          posted: '2026-07-06', amount: '-50.00', description: 'VENMO PAYMENT', payee: 'VENMO',
+          pending: false, category_id: 1, category_name: 'Dining',
+          owner_override: null, effective_owner: 'scott', transfer_peer_id: null,
+          splits: [
+            { id: 1, category_id: 1, category: 'Dining', amount: '-30.00', note: '' },
+            { id: 2, category_id: 2, category: 'Groceries', amount: '-20.00', note: '' },
+          ],
+        },
+      ],
+    }
+    const fetchMock = vi.fn((url: string) => {
+      const body = url.startsWith('/api/categories') ? cats : splitTxns
+      return Promise.resolve({ ok: true, json: async () => body })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <MemoryRouter initialEntries={['/transactions?view=scott&month=2026-07']}>
+        <Transactions view="scott" month="2026-07" />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('Split · Dining + Groceries')).toBeInTheDocument()
+    expect(screen.queryByLabelText('category for VENMO')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /unsplit/i })).toBeInTheDocument()
+  })
+
+  it('hides the Split action for pending and transfer rows', async () => {
+    const rowsBody = {
+      transactions: [
+        {
+          id: 10, source: 'simplefin', account_id: 'ally-s', account_name: 'Ally',
+          posted: '2026-07-07', amount: '-10.00', description: 'PENDING CHARGE', payee: 'PENDING CHARGE',
+          pending: true, category_id: 2, category_name: 'Groceries',
+          owner_override: null, effective_owner: 'scott', transfer_peer_id: null,
+          splits: [],
+        },
+        {
+          id: 11, source: 'simplefin', account_id: 'ally-s', account_name: 'Ally',
+          posted: '2026-07-08', amount: '-25.00', description: 'TRANSFER OUT', payee: 'TRANSFER OUT',
+          pending: false, category_id: 2, category_name: 'Groceries',
+          owner_override: null, effective_owner: 'scott', transfer_peer_id: 99,
+          splits: [],
+        },
+      ],
+    }
+    const fetchMock = vi.fn((url: string) => {
+      const body = url.startsWith('/api/categories') ? cats : rowsBody
+      return Promise.resolve({ ok: true, json: async () => body })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <MemoryRouter initialEntries={['/transactions?view=scott&month=2026-07']}>
+        <Transactions view="scott" month="2026-07" />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('PENDING CHARGE')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /^split$/i })).not.toBeInTheDocument()
+  })
+
+  it('opens and closes the inline split editor via the Split button', async () => {
+    const fetchMock = stubFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <MemoryRouter initialEntries={['/transactions?view=scott&month=2026-07']}>
+        <Transactions view="scott" month="2026-07" />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('WHOLE FOODS')).toBeInTheDocument())
+    expect(screen.queryByLabelText(/amount for part 1/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^split$/i }))
+    expect(screen.getByLabelText(/amount for part 1/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^split$/i }))
+    expect(screen.queryByLabelText(/amount for part 1/)).not.toBeInTheDocument()
+  })
+
+  it('unsplits a row via DELETE and reverts to the category select after reload', async () => {
+    const splitTxn = {
+      id: 9, source: 'simplefin', account_id: 'ally-s', account_name: 'Ally',
+      posted: '2026-07-06', amount: '-50.00', description: 'VENMO PAYMENT', payee: 'VENMO',
+      pending: false, category_id: 1, category_name: 'Dining',
+      owner_override: null, effective_owner: 'scott', transfer_peer_id: null,
+      splits: [
+        { id: 1, category_id: 1, category: 'Dining', amount: '-30.00', note: '' },
+        { id: 2, category_id: 2, category: 'Groceries', amount: '-20.00', note: '' },
+      ],
+    }
+    const unsplitTxn = { ...splitTxn, splits: [] }
+    let deleted = false
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/categories')) return Promise.resolve({ ok: true, json: async () => cats })
+      if (init?.method === 'DELETE') {
+        deleted = true
+        return Promise.resolve({ ok: true, json: async () => ({ status: 'ok' }) })
+      }
+      const body = { transactions: [deleted ? unsplitTxn : splitTxn] }
+      return Promise.resolve({ ok: true, json: async () => body })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <MemoryRouter initialEntries={['/transactions?view=scott&month=2026-07']}>
+        <Transactions view="scott" month="2026-07" />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('Split · Dining + Groceries')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /unsplit/i }))
+
+    await waitFor(() => expect(screen.getByLabelText('category for VENMO')).toBeInTheDocument())
+    expect(screen.queryByText('Split · Dining + Groceries')).not.toBeInTheDocument()
+
+    const deleteCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'DELETE')!
+    expect(deleteCall[0]).toBe('/api/transactions/9/splits')
   })
 })
 

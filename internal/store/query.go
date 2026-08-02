@@ -5,24 +5,27 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // TxnRow is a transaction as the API returns it. Amount is a decimal string.
 type TxnRow struct {
-	ID             int64   `json:"id"`
-	Source         string  `json:"source"`
-	AccountID      string  `json:"account_id"`
-	AccountName    string  `json:"account_name"`
-	Posted         string  `json:"posted"` // YYYY-MM-DD
-	Amount         string  `json:"amount"`
-	Description    string  `json:"description"`
-	Payee          string  `json:"payee"`
-	Pending        bool    `json:"pending"`
-	CategoryID     *int    `json:"category_id"`
-	CategoryName   *string `json:"category_name"`
-	OwnerOverride  *string `json:"owner_override"`
-	EffectiveOwner string  `json:"effective_owner"`
-	TransferPeerID *int64  `json:"transfer_peer_id"`
+	ID             int64      `json:"id"`
+	Source         string     `json:"source"`
+	AccountID      string     `json:"account_id"`
+	AccountName    string     `json:"account_name"`
+	Posted         string     `json:"posted"` // YYYY-MM-DD
+	Amount         string     `json:"amount"`
+	Description    string     `json:"description"`
+	Payee          string     `json:"payee"`
+	Pending        bool       `json:"pending"`
+	CategoryID     *int       `json:"category_id"`
+	CategoryName   *string    `json:"category_name"`
+	OwnerOverride  *string    `json:"owner_override"`
+	EffectiveOwner string     `json:"effective_owner"`
+	TransferPeerID *int64     `json:"transfer_peer_id"`
+	Splits         []SplitRow `json:"splits"`
 }
 
 // TxnFilter narrows a transaction listing. Zero values mean "no filter" for
@@ -48,19 +51,40 @@ func ownerClause(view string, args *[]any) string {
 	}
 }
 
+// txnSelectColumns is the column list shared by ListTransactions and
+// GetTransaction, in the exact order scanTxnRow expects. Keeping both SELECTs
+// built from this constant means a TxnRow field change only needs one edit.
+const txnSelectColumns = `t.id, t.source, t.account_id, a.name, to_char(t.posted,'YYYY-MM-DD'),
+	       t.amount::text, t.description, t.payee, t.pending,
+	       t.category_id, c.name, t.owner_override,
+	       COALESCE(t.owner_override, a.owner), t.transfer_peer_id`
+
+// txnSelectFrom is the FROM/JOIN clause shared by ListTransactions and
+// GetTransaction.
+const txnSelectFrom = `FROM transactions t
+	JOIN accounts a ON a.id = t.account_id
+	LEFT JOIN categories c ON c.id = t.category_id`
+
+// scanTxnRow scans one txnSelectColumns row into a TxnRow. row is pgx.Row so
+// this works for both QueryRow (GetTransaction) and Query's row iterator
+// (ListTransactions) — pgx.Rows satisfies the single-method pgx.Row interface.
+func scanTxnRow(row pgx.Row) (TxnRow, error) {
+	var r TxnRow
+	err := row.Scan(&r.ID, &r.Source, &r.AccountID, &r.AccountName, &r.Posted,
+		&r.Amount, &r.Description, &r.Payee, &r.Pending,
+		&r.CategoryID, &r.CategoryName, &r.OwnerOverride,
+		&r.EffectiveOwner, &r.TransferPeerID)
+	return r, err
+}
+
 // ListTransactions returns transactions matching the filter, newest first.
 func (s *Store) ListTransactions(ctx context.Context, f TxnFilter) ([]TxnRow, error) {
 	var sb strings.Builder
 	args := []any{}
-	sb.WriteString(`
-		SELECT t.id, t.source, t.account_id, a.name, to_char(t.posted,'YYYY-MM-DD'),
-		       t.amount::text, t.description, t.payee, t.pending,
-		       t.category_id, c.name, t.owner_override,
-		       COALESCE(t.owner_override, a.owner), t.transfer_peer_id
-		FROM transactions t
-		JOIN accounts a ON a.id = t.account_id
-		LEFT JOIN categories c ON c.id = t.category_id
-		WHERE 1=1`)
+	sb.WriteString(fmt.Sprintf(`
+		SELECT %s
+		%s
+		WHERE 1=1`, txnSelectColumns, txnSelectFrom))
 	sb.WriteString(ownerClause(f.View, &args))
 	if f.Month != "" {
 		args = append(args, f.Month+"-01")
@@ -69,7 +93,11 @@ func (s *Store) ListTransactions(ctx context.Context, f TxnFilter) ([]TxnRow, er
 	}
 	if f.CategoryID != nil {
 		args = append(args, *f.CategoryID)
-		sb.WriteString(fmt.Sprintf(" AND t.category_id = $%d", len(args)))
+		sb.WriteString(fmt.Sprintf(` AND ((t.category_id = $%d AND NOT EXISTS (
+				SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id))
+			OR EXISTS (
+				SELECT 1 FROM transaction_splits sp
+				WHERE sp.transaction_id = t.id AND sp.category_id = $%d))`, len(args), len(args)))
 	}
 	if f.AccountID != "" {
 		args = append(args, f.AccountID)
@@ -91,16 +119,57 @@ func (s *Store) ListTransactions(ctx context.Context, f TxnFilter) ([]TxnRow, er
 	defer rows.Close()
 	out := make([]TxnRow, 0)
 	for rows.Next() {
-		var r TxnRow
-		if err := rows.Scan(&r.ID, &r.Source, &r.AccountID, &r.AccountName, &r.Posted,
-			&r.Amount, &r.Description, &r.Payee, &r.Pending,
-			&r.CategoryID, &r.CategoryName, &r.OwnerOverride,
-			&r.EffectiveOwner, &r.TransferPeerID); err != nil {
+		r, err := scanTxnRow(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	ids := make([]int64, len(out))
+	for i := range out {
+		ids[i] = out[i].ID
+	}
+	splits, err := s.SplitsByTxnIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if sp, ok := splits[out[i].ID]; ok {
+			out[i].Splits = sp
+		} else {
+			out[i].Splits = []SplitRow{}
+		}
+	}
+	return out, nil
+}
+
+// GetTransaction fetches one transaction by id with splits attached.
+// Returns ErrNotFound if no row with the given id exists.
+func (s *Store) GetTransaction(ctx context.Context, id int64) (*TxnRow, error) {
+	r, err := scanTxnRow(s.Pool.QueryRow(ctx, fmt.Sprintf(`
+		SELECT %s
+		%s
+		WHERE t.id = $1`, txnSelectColumns, txnSelectFrom), id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	splits, err := s.SplitsByTxnIDs(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	if sp, ok := splits[id]; ok {
+		r.Splits = sp
+	} else {
+		r.Splits = []SplitRow{}
+	}
+	return &r, nil
 }
 
 // ErrNotFound is returned when an update targets a row that does not exist.

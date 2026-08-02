@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/vollminlab/vollmint/internal/simplefin"
+	"github.com/vollminlab/vollmint/internal/store"
 )
 
 func fakeBridge(t *testing.T, body string) *simplefin.Client {
@@ -124,5 +125,70 @@ func TestWindowStartOverlap(t *testing.T) {
 	want := started.AddDate(0, 0, -7)
 	if !got.Equal(want) {
 		t.Fatalf("windowStart=%v want %v", got, want)
+	}
+}
+
+func TestCleanStaleSplits(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+
+	if err := s.UpsertAccounts(ctx, []store.Account{{
+		ID: "acct-stale", Name: "Stale Test", Org: "test", Owner: "scott",
+	}}); err != nil {
+		t.Fatalf("seed account: %v", err)
+	}
+	if _, err := s.UpsertTransactions(ctx, []store.Txn{{
+		Source: "simplefin", ExternalID: "stale-1", AccountID: "acct-stale",
+		Posted: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC),
+		Amount: "-50.00", Description: "stale split test", Payee: "STALE TEST",
+	}}); err != nil {
+		t.Fatalf("seed txn: %v", err)
+	}
+	var id int64
+	if err := s.Pool.QueryRow(ctx,
+		`SELECT id FROM transactions WHERE source='simplefin' AND external_id='stale-1'`).Scan(&id); err != nil {
+		t.Fatalf("lookup id: %v", err)
+	}
+	var dining, groceries int
+	if err := s.Pool.QueryRow(ctx, `SELECT id FROM categories WHERE name='Dining'`).Scan(&dining); err != nil {
+		t.Fatalf("dining id: %v", err)
+	}
+	if err := s.Pool.QueryRow(ctx, `SELECT id FROM categories WHERE name='Groceries'`).Scan(&groceries); err != nil {
+		t.Fatalf("groceries id: %v", err)
+	}
+	if err := s.ReplaceSplits(ctx, id, []store.SplitInput{
+		{CategoryID: dining, Amount: "-30.00"},
+		{CategoryID: groceries, Amount: "-20.00"},
+	}); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	// Consistent splits survive cleanup.
+	n, err := CleanStaleSplits(ctx, s)
+	if err != nil {
+		t.Fatalf("clean (consistent): %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("want 0 deleted while consistent, got %d", n)
+	}
+
+	// Simulate a sync re-upsert changing the parent amount → splits are stale.
+	if _, err := s.Pool.Exec(ctx, `UPDATE transactions SET amount = '-60.00' WHERE id = $1`, id); err != nil {
+		t.Fatalf("mutate amount: %v", err)
+	}
+	n, err = CleanStaleSplits(ctx, s)
+	if err != nil {
+		t.Fatalf("clean (stale): %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("want 2 stale split rows deleted, got %d", n)
+	}
+	var remain int
+	if err := s.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM transaction_splits WHERE transaction_id = $1`, id).Scan(&remain); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if remain != 0 {
+		t.Fatalf("stale splits remain: %d", remain)
 	}
 }

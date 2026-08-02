@@ -12,7 +12,7 @@ import (
 )
 
 type SyncResult struct {
-	Upserted, Categorized, Paired, Swept int
+	Upserted, Categorized, Paired, Swept, SplitsDeleted int
 }
 
 // Sync runs one SimpleFIN pull: fetch → upsert accounts+txns → rules →
@@ -71,6 +71,9 @@ func Sync(ctx context.Context, s *store.Store, c *simplefin.Client, defaultOwner
 	if res.Upserted, err = s.UpsertTransactions(ctx, txns); err != nil {
 		return fail(err)
 	}
+	if res.SplitsDeleted, err = CleanStaleSplits(ctx, s); err != nil {
+		return fail(err)
+	}
 	if res.Categorized, err = ApplyRules(ctx, s); err != nil {
 		return fail(err)
 	}
@@ -82,13 +85,17 @@ func Sync(ctx context.Context, s *store.Store, c *simplefin.Client, defaultOwner
 	}
 
 	status := "ok"
-	detail := ""
+	var details []string
+	if res.SplitsDeleted > 0 {
+		details = append(details, fmt.Sprintf("stale splits deleted: %d", res.SplitsDeleted))
+	}
 	if len(set.Errors) > 0 {
 		// Institution-level warnings (e.g. one bank needs re-auth): the run
 		// still succeeded, but surface them.
 		status = "partial"
-		detail = strings.Join(set.Errors, "; ")
+		details = append(details, set.Errors...)
 	}
+	detail := strings.Join(details, "; ")
 	_, err = s.Pool.Exec(ctx, `UPDATE sync_runs
 		SET status=$1, finished=now(), rows_upserted=$2, detail=$3 WHERE id=$4`,
 		status, res.Upserted, detail, runID)
@@ -109,6 +116,22 @@ func windowStart(ctx context.Context, s *store.Store) (time.Time, error) {
 		return time.Now().UTC().AddDate(0, 0, -85), nil
 	}
 	return last.UTC().AddDate(0, 0, -7), nil
+}
+
+// CleanStaleSplits deletes split sets whose sum no longer equals the parent
+// amount — the parent was re-upserted with a changed amount by sync.
+func CleanStaleSplits(ctx context.Context, s *store.Store) (int, error) {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM transaction_splits
+		WHERE transaction_id IN (
+		  SELECT sp.transaction_id
+		  FROM transaction_splits sp
+		  JOIN transactions t ON t.id = sp.transaction_id
+		  GROUP BY sp.transaction_id, t.amount
+		  HAVING SUM(sp.amount) <> t.amount)`)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 // SweepStalePending deletes pending rows untouched for staleDays — their
