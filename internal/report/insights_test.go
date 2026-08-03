@@ -87,6 +87,63 @@ func TestInsightBudgetBreachBeatsSpike(t *testing.T) {
 	}
 }
 
+// TestInsightBudgetBreachLastDayPhrasing covers the current-month body on
+// the last day of the month ("0 days left" would read wrong) and the
+// singular "1 day left" case the day before.
+func TestInsightBudgetBreachLastDayPhrasing(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	seedSpend(t, s, "acct-ins", "scott", "ld-jul", "2026-07-10", "-200.00", "Dining")
+	setBudget(t, s, "Dining", "2026-07", "150.00")
+
+	// July 31 — last day of the month.
+	now := time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC)
+	items, err := InsightCategorySpikes(ctx, s, "household", "2026-07", now)
+	if err != nil {
+		t.Fatalf("spikes: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("want 1 breach card, got %+v", items)
+	}
+	if !strings.Contains(items[0].Body, "on the last day of the month") {
+		t.Fatalf("last-day body: %q", items[0].Body)
+	}
+	if strings.Contains(items[0].Body, "days left") {
+		t.Fatalf("last-day body must not say days left: %q", items[0].Body)
+	}
+
+	// July 30 — exactly one day left, singular.
+	now = time.Date(2026, 7, 30, 0, 0, 0, 0, time.UTC)
+	items, err = InsightCategorySpikes(ctx, s, "household", "2026-07", now)
+	if err != nil {
+		t.Fatalf("spikes: %v", err)
+	}
+	if !strings.Contains(items[0].Body, "with 1 day left in the month") {
+		t.Fatalf("one-day body: %q", items[0].Body)
+	}
+}
+
+// TestInsightCategorySpikeShortHistory guards the average divisor: with only
+// one prior month of history, the baseline is that month's spend — not
+// spend/3. A $100 → $110 month-over-month change must not read as a spike.
+func TestInsightCategorySpikeShortHistory(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	seedSpend(t, s, "acct-short", "scott", "sh-jun", "2026-06-10", "-100.00", "Dining")
+	seedSpend(t, s, "acct-short", "scott", "sh-jul", "2026-07-10", "-110.00", "Dining")
+
+	now := time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC)
+	items, err := InsightCategorySpikes(ctx, s, "household", "2026-07", now)
+	if err != nil {
+		t.Fatalf("spikes: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("short history must average over months present (avg=100, not 33.33): %+v", items)
+	}
+}
+
 func TestInsightSubscriptions(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

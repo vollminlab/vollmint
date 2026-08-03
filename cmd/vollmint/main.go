@@ -72,8 +72,8 @@ func runSync(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("sync ok: upserted=%d categorized=%d paired=%d swept=%d\n",
-		res.Upserted, res.Categorized, res.Paired, res.Swept)
+	fmt.Printf("sync ok: upserted=%d categorized=%d paired=%d swept=%d splits_deleted=%d\n",
+		res.Upserted, res.Categorized, res.Paired, res.Swept, res.SplitsDeleted)
 	return nil
 }
 

@@ -124,7 +124,7 @@ func TestGetForecastEmptyIsValid(t *testing.T) {
 	if resp.Forecast.Bills == nil {
 		t.Fatal(`bills must be [], not null`)
 	}
-	if resp.Forecast.RemainingExpected != "0" {
-		t.Fatalf("remaining %q, want 0", resp.Forecast.RemainingExpected)
+	if resp.Forecast.RemainingExpected != "0.00" {
+		t.Fatalf("remaining %q, want 0.00", resp.Forecast.RemainingExpected)
 	}
 }

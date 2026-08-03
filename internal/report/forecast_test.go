@@ -88,8 +88,8 @@ func TestForecastExcludesDeadAndP2P(t *testing.T) {
 	if len(f.Bills) != 0 {
 		t.Fatalf("want 0 bills (dead + P2P excluded), got %+v", f.Bills)
 	}
-	if f.RemainingExpected != "0" {
-		t.Fatalf("remaining %q, want 0", f.RemainingExpected)
+	if f.RemainingExpected != "0.00" {
+		t.Fatalf("remaining %q, want 0.00", f.RemainingExpected)
 	}
 }
 
