@@ -39,7 +39,7 @@ type ForecastResult struct {
 // unpaid bills only.
 func Forecast(ctx context.Context, s *store.Store, view, month string) (ForecastResult, error) {
 	res := ForecastResult{Month: month, View: view,
-		Bills: []ForecastBill{}, RemainingExpected: "0"}
+		Bills: []ForecastBill{}, RemainingExpected: "0.00"}
 
 	own, args := ownerFilter(view, 2)
 	full := append([]any{month + "-01"}, args...)
@@ -70,7 +70,7 @@ SELECT cad.payee, cm.category_id, COALESCE(c.name, ''),
        COALESCE(md.pday, 1), COALESCE(lt.expected::text, '0'),
        (p.payee IS NOT NULL),
        COALESCE(to_char(p.posted, 'YYYY-MM-DD'), ''), COALESCE(p.mag::text, ''),
-       COALESCE(SUM(CASE WHEN p.payee IS NULL THEN lt.expected ELSE 0 END) OVER (), 0)::text
+       round(COALESCE(SUM(CASE WHEN p.payee IS NULL THEN lt.expected ELSE 0 END) OVER (), 0), 2)::text
 FROM cadence cad
 LEFT JOIN med md ON md.payee = cad.payee
 LEFT JOIN latest lt ON lt.payee = cad.payee

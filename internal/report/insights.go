@@ -22,6 +22,11 @@ type Insight struct {
 // budget is exceeded, else a spike card when spent >= 1.25x the 3-month
 // average and at least $50 over it. Cap 5, sorted by delta descending.
 func InsightCategorySpikes(ctx context.Context, s *store.Store, view, month string, now time.Time) ([]Insight, error) {
+	mt, err := time.Parse("2006-01", month)
+	if err != nil {
+		return nil, fmt.Errorf("bad month %q: %w", month, err)
+	}
+
 	own, args := ownerFilter(view, 2)
 	full := append([]any{month + "-01"}, args...)
 
@@ -38,7 +43,9 @@ WITH eff AS (
     AND t.posted < ($1::date + interval '1 month')`+own+`
 ),
 cur AS (SELECT cat_id, -SUM(amt) AS spent FROM eff WHERE m = $1::date GROUP BY cat_id),
-prev AS (SELECT cat_id, -SUM(amt)/3 AS avg3 FROM eff WHERE m < $1::date GROUP BY cat_id)
+prev AS (SELECT cat_id,
+               -SUM(amt)/GREATEST((SELECT COUNT(DISTINCT m) FROM eff WHERE m < $1::date), 1) AS avg3
+        FROM eff WHERE m < $1::date GROUP BY cat_id)
 SELECT c.id, c.name, cur.spent::text, round(COALESCE(prev.avg3, 0), 2)::text,
        COALESCE(b.amount::text, '')
 FROM cur
@@ -58,7 +65,6 @@ ORDER BY c.name`, full...)
 	}
 	var cards []carded
 	current := month == now.Format("2006-01")
-	mt, _ := time.Parse("2006-01", month)
 	daysIn := time.Date(mt.Year(), mt.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
 
 	for rows.Next() {
@@ -75,9 +81,17 @@ ORDER BY c.name`, full...)
 				over := spentC - budgetC
 				body := fmt.Sprintf("%s is %s over its %s budget.", name, usd(over), usd(budgetC))
 				if current {
-					left := daysIn - now.Day()
-					body = fmt.Sprintf("%s is %s over its %s budget with %d days left in the month.",
-						name, usd(over), usd(budgetC), left)
+					switch left := daysIn - now.Day(); {
+					case left <= 0:
+						body = fmt.Sprintf("%s is %s over its %s budget on the last day of the month.",
+							name, usd(over), usd(budgetC))
+					case left == 1:
+						body = fmt.Sprintf("%s is %s over its %s budget with 1 day left in the month.",
+							name, usd(over), usd(budgetC))
+					default:
+						body = fmt.Sprintf("%s is %s over its %s budget with %d days left in the month.",
+							name, usd(over), usd(budgetC), left)
+					}
 				}
 				cards = append(cards, carded{Insight{
 					Type: "budget_breach", Title: name + " is over budget",

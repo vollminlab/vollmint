@@ -11,8 +11,21 @@ const summaryPayload = {
   ],
 }
 
+const forecastPayload = {
+  forecast: { month: '2026-07', view: 'household', bills: [], remaining_expected: '0.00' },
+}
+
 beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => summaryPayload }))
+  // Dashboard fires two fetches: the summary and UpcomingBills' forecast.
+  // Answer by URL — a single mockResolvedValue would feed the summary
+  // payload to the forecast call and strand UpcomingBills on "Loading…".
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => (String(url).includes('/api/forecast') ? forecastPayload : summaryPayload),
+    })),
+  )
 })
 
 describe('Dashboard', () => {
@@ -25,6 +38,8 @@ describe('Dashboard', () => {
     await waitFor(() => expect(screen.getByText('$3,000.00')).toBeInTheDocument()) // In
     expect(screen.getByText('$140.00')).toBeInTheDocument() // Out
     expect(screen.getByText('Groceries')).toBeInTheDocument()
+    // UpcomingBills resolves past Loading… with the forecast payload.
+    await waitFor(() => expect(screen.getByText('No recurring bills detected yet.')).toBeInTheDocument())
   })
 
   it('each category bar deep-links to Transactions pre-filtered by category', async () => {
