@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/vollminlab/vollmint/internal/store"
@@ -91,6 +92,67 @@ func TestMatchVenmoPairs(t *testing.T) {
 	}
 	if peerOf(t, s, lonely) != 0 {
 		t.Error("unmatched VENMO debit must stay unpaired (counted as spend)")
+	}
+
+	// Idempotency: second run pairs nothing new.
+	if n2, _ := MatchTransfers(ctx, s); n2 != 0 {
+		t.Fatalf("second run paired %d, want 0", n2)
+	}
+}
+
+// seedVenmoTyped seeds a venmo_csv row with a raw {"type": ...} payload, the
+// way the Venmo CSV parser records the statement's Type column.
+func seedVenmoTyped(t *testing.T, s *store.Store, extID, posted, amount, note, typ string) int64 {
+	t.Helper()
+	_, err := s.UpsertTransactions(context.Background(), []store.Txn{{
+		Source: "venmo_csv", ExternalID: extID, AccountID: "venmo",
+		Posted: day(posted), Amount: amount, Description: note, Payee: note,
+		Raw: []byte(fmt.Sprintf(`{"type":%q}`, typ)),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id int64
+	if err := s.Pool.QueryRow(context.Background(),
+		`SELECT id FROM transactions WHERE source='venmo_csv' AND external_id=$1`, extID).Scan(&id); err != nil {
+		t.Fatalf("seedVenmoTyped lookup: %v", err)
+	}
+	return id
+}
+
+func TestMatchVenmoCashoutPairs(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	seedAccount(t, s, "ally", "scott")
+
+	// Cashout: Venmo balance → bank. Bank-side credit + venmo Standard Transfer.
+	bank := seedFull(t, s, "simplefin", "b1", "ally", "2026-05-18", "431.00", "VENMO CASHOUT")
+	venmo := seedVenmoTyped(t, s, "v1", "2026-05-17", "-431.00", "", "Standard Transfer")
+
+	// Decoy: an ordinary venmo spend of matching magnitude must not be swept
+	// into a cashout pair — only Standard Transfer rows qualify.
+	bank2 := seedFull(t, s, "simplefin", "b2", "ally", "2026-05-27", "30.00", "VENMO CASHOUT")
+	spend := seedVenmoTyped(t, s, "v2", "2026-05-26", "-30.00", "Thank you", "Payment")
+
+	n, err := MatchTransfers(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("want 1 pair, got %d", n)
+	}
+	if peerOf(t, s, bank) != venmo || peerOf(t, s, venmo) != bank {
+		t.Error("cashout peer ids not linked both ways")
+	}
+	if categoryOf(t, s, bank) != "Transfer" || categoryOf(t, s, venmo) != "Transfer" {
+		t.Errorf("both cashout legs must be Transfer, got bank=%q venmo=%q",
+			categoryOf(t, s, bank), categoryOf(t, s, venmo))
+	}
+	if peerOf(t, s, bank2) != 0 || peerOf(t, s, spend) != 0 {
+		t.Error("non-transfer venmo row must not pair with a bank credit")
+	}
+	if categoryOf(t, s, spend) == "Transfer" {
+		t.Error("venmo spend row must keep its own category")
 	}
 
 	// Idempotency: second run pairs nothing new.

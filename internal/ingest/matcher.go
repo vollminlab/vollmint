@@ -14,9 +14,10 @@ var cardPaymentRe = regexp.MustCompile(`(?i)(E-PAYMENT|EPAYMENT|AUTOPAY|CARD ?PY
 
 var venmoRe = regexp.MustCompile(`(?i)VENMO`)
 
-// MatchTransfers pairs (a) bank-side VENMO debits with venmo_csv rows and
-// (b) checking↔card payment legs. Runs inside one DB transaction; each row
-// pairs at most once; returns the number of new pairs.
+// MatchTransfers pairs (a) bank-side VENMO debits with venmo_csv rows,
+// (a2) bank-side VENMO credits with venmo_csv cashouts, and (b) checking↔card
+// payment legs. Runs inside one DB transaction; each row pairs at most once;
+// returns the number of new pairs.
 func MatchTransfers(ctx context.Context, s *store.Store) (int, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -88,6 +89,58 @@ func MatchTransfers(ctx context.Context, s *store.Store) (int, error) {
 		if _, err := tx.Exec(ctx, `UPDATE transactions
 			SET transfer_peer_id=$1, updated_at=now() WHERE id=$2`, p.a, p.b); err != nil {
 			return 0, err
+		}
+		pairs++
+	}
+
+	// (a2) Venmo cashouts: bank-side VENMO credit ←→ venmo_csv "Standard
+	// Transfer" (Venmo balance → bank), equal magnitude, ±3 days. Unlike (a),
+	// both legs are pure transfers — neither carries spend — so both become
+	// Transfer. The raw type gate keeps ordinary venmo spend rows of matching
+	// magnitude from being swept in.
+	rows, err = tx.Query(ctx, `
+		SELECT b.id, v.id FROM transactions b
+		JOIN LATERAL (
+		  SELECT id FROM transactions v
+		  WHERE v.source='venmo_csv' AND v.transfer_peer_id IS NULL
+		    AND v.raw->>'type' = 'Standard Transfer'
+		    AND v.amount = -b.amount
+		    AND v.posted BETWEEN b.posted - 3 AND b.posted + 3
+		  ORDER BY abs(v.posted - b.posted), v.id LIMIT 1
+		) v ON true
+		WHERE b.source='simplefin' AND b.transfer_peer_id IS NULL
+		  AND b.amount > 0 AND b.description ~* 'VENMO'
+		ORDER BY b.id`)
+	if err != nil {
+		return 0, err
+	}
+	var cashoutPairs []pair
+	takenCashout := map[int64]bool{}
+	for rows.Next() {
+		var p pair
+		if err := rows.Scan(&p.a, &p.b); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if !takenCashout[p.b] { // a venmo transfer can satisfy only one bank credit
+			takenCashout[p.b] = true
+			cashoutPairs = append(cashoutPairs, p)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, p := range cashoutPairs {
+		for _, upd := range []struct{ id, peer int64 }{{p.a, p.b}, {p.b, p.a}} {
+			if _, err := tx.Exec(ctx, `UPDATE transactions
+				SET transfer_peer_id=$1,
+				    category_id = CASE WHEN category_id IS NULL OR category_id=$2 THEN $3 ELSE category_id END,
+				    updated_at=now()
+				WHERE id=$4`,
+				upd.peer, needsVenmoCat, transferCat, upd.id); err != nil {
+				return 0, err
+			}
 		}
 		pairs++
 	}
