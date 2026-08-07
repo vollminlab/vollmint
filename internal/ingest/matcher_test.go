@@ -250,3 +250,36 @@ func TestMatchCardPaymentPairs(t *testing.T) {
 		t.Fatalf("second run paired %d, want 0", n2)
 	}
 }
+
+func TestMatchCapitalOnePaymentPairs(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	seedAccount(t, s, "capone-checking", "scott")
+	seedAccount(t, s, "discover-card", "scott")
+
+	// Descriptors as Capital One renders them after taking over Discover's
+	// servicing: neither leg carries the classic E-PAYMENT/THANK YOU wording.
+	out := seedFull(t, s, "simplefin", "cap1", "capone-checking", "2026-08-04", "-4344.35", "DISCOVER CAP ONE ONLINE PMT")
+	in := seedFull(t, s, "simplefin", "cap2", "discover-card", "2026-08-04", "4344.35", "CAPITAL ONE ONLINE PYMT")
+	outMobile := seedFull(t, s, "simplefin", "cap3", "capone-checking", "2026-08-06", "-314.79", "DISCOVER CAP ONE MOBILE PMT")
+	inMobile := seedFull(t, s, "simplefin", "cap4", "discover-card", "2026-08-07", "314.79", "CAPITAL ONE MOBILE PYMT")
+
+	n, err := MatchTransfers(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("want 2 pairs, got %d", n)
+	}
+	if peerOf(t, s, out) != in || peerOf(t, s, in) != out {
+		t.Error("online payment pair not linked")
+	}
+	if peerOf(t, s, outMobile) != inMobile || peerOf(t, s, inMobile) != outMobile {
+		t.Error("mobile payment pair not linked")
+	}
+	for _, id := range []int64{out, in, outMobile, inMobile} {
+		if categoryOf(t, s, id) != "Transfer" {
+			t.Errorf("txn %d: want Transfer, got %q", id, categoryOf(t, s, id))
+		}
+	}
+}

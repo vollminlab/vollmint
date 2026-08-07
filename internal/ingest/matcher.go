@@ -8,9 +8,12 @@ import (
 )
 
 // cardPaymentRe covers the payment descriptors of the household's issuers
-// (Chase, Discover) plus generic autopay wording. Ordinary purchases never
-// match these; extend the list if a new issuer joins.
-var cardPaymentRe = regexp.MustCompile(`(?i)(E-PAYMENT|EPAYMENT|AUTOPAY|CARD ?PYMT|CRD PMT|PAYMENT THANK YOU|CHASE CREDIT CRD|DISCOVER +PAYMENT)`)
+// (Chase, Discover/Capital One) plus generic autopay wording. Ordinary
+// purchases never match these; extend the list if a new issuer joins.
+// Capital One (servicing the Discover card since 2026) writes the checking
+// leg as "DISCOVER CAP ONE ONLINE/MOBILE PMT" and the card leg as
+// "CAPITAL ONE ONLINE/MOBILE PYMT" — no E-PAYMENT/THANK YOU wording.
+var cardPaymentRe = regexp.MustCompile(`(?i)(E-PAYMENT|EPAYMENT|AUTOPAY|CARD ?PYMT|CRD PMT|PAYMENT THANK YOU|CHASE CREDIT CRD|DISCOVER +PAYMENT|CAP ONE (ONLINE|MOBILE) PMT|CAPITAL ONE (ONLINE|MOBILE) PYMT)`)
 
 var venmoRe = regexp.MustCompile(`(?i)VENMO`)
 
