@@ -45,6 +45,7 @@ func (s *Server) routes() {
 	s.registerTrends()
 	s.registerImports()
 	s.registerSync()
+	s.registerNetWorth()
 	s.registerStatic() // must be last: it owns the catch-all "/"
 }
 
