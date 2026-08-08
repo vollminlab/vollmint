@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/vollminlab/vollmint/internal/store"
@@ -183,5 +184,84 @@ func TestNetWorthEmptyAndValidation(t *testing.T) {
 	}
 	if code, _ := getNetworth(t, srv, "?view=scott&range=2w"); code != http.StatusBadRequest {
 		t.Errorf("bad range status = %d, want 400", code)
+	}
+}
+
+func doJSON(t *testing.T, srv *Server, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	srv.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func TestCreateManualAccountEndpoint(t *testing.T) {
+	s := testStore(t)
+	srv := New(s)
+
+	rec := doJSON(t, srv, http.MethodPost, "/api/accounts/manual",
+		`{"name":"401k","owner":"scott","balance":"412000.00"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.ID != "manual-401k" {
+		t.Errorf("id = %s, want manual-401k", created.ID)
+	}
+
+	// Validation matrix.
+	for name, tc := range map[string]struct {
+		body string
+		want int
+	}{
+		"duplicate":    {`{"name":"401k","owner":"scott","balance":"1.00"}`, http.StatusConflict},
+		"bad owner":    {`{"name":"X","owner":"household","balance":"1.00"}`, http.StatusBadRequest},
+		"bad balance":  {`{"name":"Y","owner":"scott","balance":"1.2.3"}`, http.StatusBadRequest},
+		"empty name":   {`{"name":"  ","owner":"scott","balance":"1.00"}`, http.StatusBadRequest},
+		"symbols name": {`{"name":"!!!","owner":"scott","balance":"1.00"}`, http.StatusBadRequest},
+		"bad json":     {`{`, http.StatusBadRequest},
+	} {
+		rec := doJSON(t, srv, http.MethodPost, "/api/accounts/manual", tc.body)
+		if rec.Code != tc.want {
+			t.Errorf("%s: status = %d, want %d (body=%s)", name, rec.Code, tc.want, rec.Body.String())
+		}
+	}
+}
+
+func TestUpdateManualBalanceEndpoint(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.CreateManualAccount(context.Background(), "401k", "scott", "412000.00"); err != nil {
+		t.Fatal(err)
+	}
+	seedAccount(t, s, "synced-1", "scott")
+	srv := New(s)
+
+	rec := doJSON(t, srv, http.MethodPut, "/api/accounts/manual-401k/balance", `{"balance":"415250.00"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var balance string
+	if err := s.Pool.QueryRow(context.Background(),
+		`SELECT balance::text FROM accounts WHERE id = 'manual-401k'`).Scan(&balance); err != nil {
+		t.Fatal(err)
+	}
+	if balance != "415250.00" {
+		t.Errorf("balance = %s, want 415250.00", balance)
+	}
+
+	if rec := doJSON(t, srv, http.MethodPut, "/api/accounts/synced-1/balance", `{"balance":"1.00"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("synced: status = %d, want 400", rec.Code)
+	}
+	if rec := doJSON(t, srv, http.MethodPut, "/api/accounts/nope/balance", `{"balance":"1.00"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown: status = %d, want 404", rec.Code)
+	}
+	if rec := doJSON(t, srv, http.MethodPut, "/api/accounts/manual-401k/balance", `{"balance":"xx"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad balance: status = %d, want 400", rec.Code)
 	}
 }
