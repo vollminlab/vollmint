@@ -48,6 +48,13 @@ export function NetWorth({ view }: { view: View }) {
     return () => { live = false }
   }, [view, range, reloadKey])
 
+  // Drill-down and inline edit are per-view; a stale account id from another
+  // view would blank the chart. Reset them when the view switches.
+  useEffect(() => {
+    setSelected(null)
+    setEditId(null)
+  }, [view])
+
   if (err) return <p style={{ color: 'var(--danger)' }}>Error: {err}</p>
 
   const accounts = data?.accounts ?? []
@@ -153,6 +160,15 @@ export function NetWorth({ view }: { view: View }) {
       {formErr && <p style={{ color: 'var(--danger)' }}>Error: {formErr}</p>}
 
       <table style={{ width: '100%', marginTop: '1rem' }}>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Owner</th>
+            <th style={{ textAlign: 'right' }}>Balance</th>
+            <th>Date</th>
+            <th></th>
+          </tr>
+        </thead>
         <tbody>
           {accounts.map((a) => (
             <tr key={a.id}>

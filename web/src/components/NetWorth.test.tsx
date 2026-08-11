@@ -66,6 +66,15 @@ describe('NetWorth', () => {
     expect(screen.getByRole('heading', { name: 'Net Worth' })).toBeInTheDocument()
   })
 
+  it('resets drill-down when the view changes', async () => {
+    const { rerender } = render(<NetWorth view="household" />)
+    await waitFor(() => expect(screen.getByText('Ally Checking')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Ally Checking' }))
+    expect(screen.getByRole('heading', { name: 'Ally Checking' })).toBeInTheDocument()
+    rerender(<NetWorth view="scott" />)
+    expect(screen.getByRole('heading', { name: 'Net Worth' })).toBeInTheDocument()
+  })
+
   it('saves an inline manual balance edit via PUT', async () => {
     const fetchMock = stubFetch()
     vi.stubGlobal('fetch', fetchMock)
