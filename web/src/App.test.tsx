@@ -20,7 +20,7 @@ beforeEach(() => {
 })
 
 describe('App', () => {
-  it('renders the nav with all six pages', () => {
+  it('renders the nav with all seven pages', () => {
     render(
       <MemoryRouter initialEntries={['/?view=household&month=2026-07']}>
         <App />
@@ -30,6 +30,7 @@ describe('App', () => {
     expect(screen.getByRole('link', { name: 'Transactions' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Recurring' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Trends' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Net Worth' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Budgets' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Rules' })).toBeInTheDocument()
   })
