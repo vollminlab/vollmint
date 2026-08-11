@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -67,6 +68,11 @@ func Sync(ctx context.Context, s *store.Store, c *simplefin.Client, defaultOwner
 	}
 	if err := s.UpsertAccounts(ctx, accts); err != nil {
 		return fail(err)
+	}
+	// Snapshot capture must never hold transaction ingestion hostage — log
+	// and continue on failure.
+	if err := s.CaptureBalanceSnapshots(ctx); err != nil {
+		log.Printf("balance snapshot capture: %v", err)
 	}
 	if res.Upserted, err = s.UpsertTransactions(ctx, txns); err != nil {
 		return fail(err)

@@ -29,7 +29,7 @@ func testDB(t *testing.T) *Store {
 	}
 	t.Cleanup(s.Close)
 	for _, q := range []string{
-		`TRUNCATE transactions, sync_runs, budgets RESTART IDENTITY CASCADE`,
+		`TRUNCATE transactions, sync_runs, budgets, account_balance_snapshots RESTART IDENTITY CASCADE`,
 		`DELETE FROM accounts WHERE id <> 'venmo'`,
 		`DELETE FROM category_rules WHERE priority <> 1000`, // keep only the seed VENMO rule
 		`DELETE FROM categories WHERE name NOT IN (

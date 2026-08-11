@@ -27,7 +27,7 @@ func testStore(t *testing.T) *store.Store {
 	}
 	t.Cleanup(s.Close)
 	for _, q := range []string{
-		`TRUNCATE transactions, sync_runs, budgets RESTART IDENTITY CASCADE`,
+		`TRUNCATE transactions, sync_runs, budgets, account_balance_snapshots RESTART IDENTITY CASCADE`,
 		`DELETE FROM accounts WHERE id <> 'venmo'`,
 		`DELETE FROM category_rules WHERE priority <> 1000`,
 	} {

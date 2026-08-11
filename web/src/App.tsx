@@ -10,6 +10,7 @@ import { Budgets } from './components/Budgets'
 import { Recurring } from './components/Recurring'
 import { Trends } from './components/Trends'
 import { Rules } from './components/Rules'
+import { NetWorth } from './components/NetWorth'
 
 const isView = (v: string): v is View =>
   v === 'scott' || v === 'nikki' || v === 'joint' || v === 'household'
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="/transactions" element={<Transactions view={view} month={month} />} />
         <Route path="/recurring" element={<Recurring view={view} month={month} />} />
         <Route path="/trends" element={<Trends view={view} month={month} />} />
+        <Route path="/networth" element={<NetWorth view={view} />} />
         <Route path="/budgets" element={<Budgets month={month} />} />
         <Route path="/rules" element={<Rules />} />
       </Routes>

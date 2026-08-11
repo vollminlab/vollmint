@@ -254,3 +254,41 @@ export function getForecast(view: View, month: string): Promise<{ forecast: Fore
 export function getInsights(view: View, month: string): Promise<{ insights: Insight[] }> {
   return req(`/api/insights${buildQuery({ view, month })}`)
 }
+
+export type NetWorthRange = '1m' | '3m' | '6m' | '1y' | 'all'
+
+export interface NetWorthPoint {
+  date: string
+  total: string
+  accounts: Record<string, string>
+}
+
+export interface NetWorthAccount {
+  id: string
+  name: string
+  owner: string
+  is_manual: boolean
+  balance: string
+  balance_date: string
+}
+
+export interface NetWorthResponse {
+  series: NetWorthPoint[]
+  accounts: NetWorthAccount[]
+}
+
+export function getNetWorth(view: View, range: NetWorthRange): Promise<NetWorthResponse> {
+  return req(`/api/networth${buildQuery({ view, range })}`)
+}
+
+export function createManualAccount(body: {
+  name: string
+  owner: string
+  balance: string
+}): Promise<{ id: string }> {
+  return req('/api/accounts/manual', jsonInit('POST', body))
+}
+
+export function updateManualBalance(id: string, balance: string): Promise<{ status: string }> {
+  return req(`/api/accounts/${encodeURIComponent(id)}/balance`, jsonInit('PUT', { balance }))
+}

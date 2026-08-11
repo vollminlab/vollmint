@@ -22,6 +22,7 @@ export function Nav({ search }: { search: string }) {
       {link('/transactions', 'Transactions')}
       {link('/recurring', 'Recurring')}
       {link('/trends', 'Trends')}
+      {link('/networth', 'Net Worth')}
       {link('/budgets', 'Budgets')}
       {link('/rules', 'Rules')}
     </nav>
