@@ -84,6 +84,34 @@ func TestCaptureBalanceSnapshots(t *testing.T) {
 	}
 }
 
+func TestCaptureBalanceSnapshotsSkipsPartialNull(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+
+	// balance set, balance_date NULL -> must be skipped
+	if _, err := s.Pool.Exec(ctx, `
+		INSERT INTO accounts (id, name, org, currency, owner, balance, balance_date)
+		VALUES ('bal-only', 'Bal Only', 't', 'USD', 'scott', '50.00', NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	// balance NULL, balance_date set -> must be skipped
+	if _, err := s.Pool.Exec(ctx, `
+		INSERT INTO accounts (id, name, org, currency, owner, balance, balance_date)
+		VALUES ('date-only', 'Date Only', 't', 'USD', 'scott', NULL, '2026-07-20')`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.CaptureBalanceSnapshots(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := snapCount(t, s, "bal-only"); got != 0 {
+		t.Errorf("bal-only (NULL date) snapshots = %d, want 0", got)
+	}
+	if got := snapCount(t, s, "date-only"); got != 0 {
+		t.Errorf("date-only (NULL balance) snapshots = %d, want 0", got)
+	}
+}
+
 func TestCreateManualAccount(t *testing.T) {
 	s := testDB(t)
 	ctx := context.Background()

@@ -70,6 +70,18 @@ func TestSyncEndToEnd(t *testing.T) {
 	if owner != "scott" {
 		t.Fatalf("owner=%q", owner)
 	}
+
+	// snapshot captured during sync (Task 3 integration): ally-1's balance
+	// was written to account_balance_snapshots keyed on its balance_date.
+	var snapBal string
+	if err := s.Pool.QueryRow(ctx,
+		`SELECT balance::text FROM account_balance_snapshots WHERE account_id = 'ally-1'`).
+		Scan(&snapBal); err != nil {
+		t.Fatalf("expected a snapshot row for ally-1: %v", err)
+	}
+	if snapBal != "900.00" {
+		t.Fatalf("snapshot balance = %q, want 900.00", snapBal)
+	}
 }
 
 func TestSyncRecordsFailure(t *testing.T) {
