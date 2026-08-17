@@ -4,6 +4,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Lets a run be retried from the Actions UI or `gh workflow run`. Without it
+  # the only way to re-trigger is closing and reopening the PR, because
+  # `gh run rerun` refuses with "its workflow file may be broken".
+  workflow_dispatch:
 
 jobs:
   go-test:
