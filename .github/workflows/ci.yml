@@ -8,7 +8,7 @@ on:
 jobs:
   go-test:
     name: Go Tests
-    runs-on: vollminlab
+    runs-on: ${{ vars.CI_RUNNER || 'vollminlab' }}
     services:
       postgres:
         image: postgres:16
@@ -33,7 +33,7 @@ jobs:
 
   web-test:
     name: Web Tests
-    runs-on: vollminlab
+    runs-on: ${{ vars.CI_RUNNER || 'vollminlab' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v7
