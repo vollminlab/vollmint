@@ -1,5 +1,5 @@
 # Stage 1: build the React SPA
-FROM node:20-alpine AS web
+FROM node:24-alpine AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
