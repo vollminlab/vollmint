@@ -24,6 +24,34 @@
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "npm non-major"
+    },
+    {
+      // react and react-dom are a single unit: React requires both on the same major,
+      // so react@19 with react-dom@18 is an unsupported pairing that cannot build.
+      // Renovate defaults to one PR per package, which is what produced separate
+      // "react to v19" and "react-dom to v19" PRs in 2026-08. Each was broken on its
+      // own, so neither could ever pass CI, and both sat open for weeks instead of
+      // being merged or closed.
+      //
+      // Declared AFTER the non-major rule so it wins for these packages on every
+      // update type, not just majors -- the pairing requirement is not major-specific.
+      //
+      // @types/react* track the React major they describe, @vitejs/plugin-react gates
+      // which React it supports, and @testing-library/react declares react and
+      // react-dom as peers, so all of them belong to the same upgrade.
+      //
+      // react-router-dom is deliberately NOT here: it majors on its own cycle,
+      // independent of the React major, so it stays reviewable on its own.
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "react",
+        "react-dom",
+        "@types/react",
+        "@types/react-dom",
+        "@vitejs/plugin-react",
+        "@testing-library/react"
+      ],
+      "groupName": "react"
     }
   ]
 }
